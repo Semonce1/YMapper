@@ -334,12 +334,6 @@ class _HomeLayoutState extends State<HomeLayout> {
               borderStrokeWidth: 1,
               borderColor: Colors.black54));
     }
-        current = [waypoints[i - 1]];
-        currentIsTurn = segIsTurn;
-      }
-      current.add(waypoints[i]);
-    }
-    flush();
 
     // Draw directional arrow markers
     _flightLineArrowMarkers.clear();
