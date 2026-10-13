@@ -1008,10 +1008,14 @@ class _HomeLayoutState extends State<HomeLayout> {
                                       : () => _goTo(_step + 1, listenables),
                                   child: Text(_nextLabels[_step]),
                                 )
-                              : OutlinedButton.icon(
-                                  onPressed: () => _goTo(0, listenables),
-                                  icon: const Icon(Icons.edit_location_alt),
-                                  label: const Text("Editar el área"),
+                              : FilledButton.icon(
+                                  onPressed: () =>
+                                      MissionActions.save(context, listenables),
+                                  icon: const Icon(Icons.save_outlined),
+                                  label: Text(listenables.currentMissionId ==
+                                          null
+                                      ? "Guardar misión"
+                                      : "Guardar cambios"),
                                 ),
                         ),
                       ),

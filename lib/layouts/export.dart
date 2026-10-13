@@ -5,6 +5,7 @@ import 'package:ymapper/core/djifly_kmz.dart';
 import 'package:ymapper/core/file_saver.dart';
 import 'package:ymapper/core/share/share_file.dart';
 import 'package:ymapper/core/mission_tools.dart';
+import 'package:ymapper/layouts/missions_page.dart';
 import 'package:ymapper/components/origen_widgets.dart';
 import 'package:ymapper/shared/mission_summary.dart';
 import 'package:ymapper/theme/origen_theme.dart';
@@ -372,6 +373,56 @@ class ExportBarState extends State<ExportBar> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+              margin: const EdgeInsets.only(bottom: 10),
+              decoration: BoxDecoration(
+                  color: OrigenColors.surfaceHigh,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                      color: listenables.currentMissionId == null
+                          ? OrigenColors.accent
+                          : OrigenColors.border)),
+              child: Row(
+                children: [
+                  Icon(
+                      listenables.currentMissionId == null
+                          ? Icons.cloud_off_outlined
+                          : Icons.cloud_done_outlined,
+                      color: listenables.currentMissionId == null
+                          ? OrigenColors.accent
+                          : OrigenColors.ok),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                            listenables.currentMissionName ??
+                                "Misión sin guardar",
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 14, fontWeight: FontWeight.w600)),
+                        Text(
+                            listenables.currentMissionId == null
+                                ? "Guárdala para abrirla luego desde el celular o el computador"
+                                : "Disponible en Mis misiones en todos tus dispositivos",
+                            style: const TextStyle(
+                                fontSize: 12, color: OrigenColors.textMuted)),
+                      ],
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => MissionActions.save(context, listenables),
+                    icon: const Icon(Icons.save_outlined, size: 18),
+                    label: Text(listenables.currentMissionId == null
+                        ? "Guardar"
+                        : "Actualizar"),
+                  ),
+                ],
+              ),
+            ),
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
