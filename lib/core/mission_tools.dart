@@ -399,3 +399,110 @@ class PolygonTools {
     return sorted;
   }
 }
+
+/// Cómo gira el dron en cada waypoint.
+enum TurnMode {
+  /// Pasa por los puntos sin detenerse y redondea las esquinas
+  curved,
+
+  /// Se detiene en cada punto y sigue en línea recta
+  stop,
+}
+
+/// Tramo de la ruta para dibujar: línea de captura o tramo de giro.
+class RoutePiece {
+  final List<LatLng> points;
+  final bool isTurn;
+  RoutePiece(this.points, this.isTurn);
+}
+
+class TurnTools {
+  /// Radio máximo de redondeo de las esquinas, en metros.
+  static const int maxDamping = 10;
+
+  /// Distancia de suavizado (m) para cada waypoint en modo curvo. DJI exige
+  /// que cada tramo sea más largo que la suma de las distancias de sus dos
+  /// extremos, así que se usa menos de la mitad del tramo más corto.
+  static List<int> dampingDistances(List<LatLng> pts, {int cap = maxDamping}) {
+    const d = Distance();
+    final result = <int>[];
+    for (int i = 0; i < pts.length; i++) {
+      final prev = i > 0 ? d.as(LengthUnit.Meter, pts[i - 1], pts[i]) : null;
+      final next = i + 1 < pts.length
+          ? d.as(LengthUnit.Meter, pts[i], pts[i + 1])
+          : null;
+      final shortest = [
+        if (prev != null) prev,
+        if (next != null) next,
+      ].fold<double>(double.infinity, (a, b) => b < a ? b : a);
+      final half = shortest.isFinite ? (shortest / 2 * 0.9).floor() : cap;
+      result.add(half.clamp(1, cap));
+    }
+    return result;
+  }
+
+  /// Tramos para dibujar la ruta. En modo curvo las esquinas se redondean
+  /// con la misma distancia que se escribe en el archivo de la misión.
+  static List<RoutePiece> previewPieces(
+      List<LatLng> pts, List<bool> photoFlags, TurnMode mode) {
+    if (pts.length < 2) return [];
+    bool isTurnPoint(int i) => i < photoFlags.length && !photoFlags[i];
+    bool segIsTurn(int i) => isTurnPoint(i) && isTurnPoint(i + 1);
+
+    const dist = Distance();
+    final damping = mode == TurnMode.curved
+        ? dampingDistances(pts)
+        : List<int>.filled(pts.length, 0);
+
+    // Para cada vértice interior con cambio de dirección: punto de entrada A,
+    // arco y punto de salida B.
+    final entry = List<LatLng>.of(pts);
+    final exit = List<LatLng>.of(pts);
+    final arcs = List<List<LatLng>>.filled(pts.length, const []);
+    for (int i = 1; i + 1 < pts.length; i++) {
+      if (damping[i] <= 0) continue;
+      final bIn = dist.bearing(pts[i - 1], pts[i]);
+      final bOut = dist.bearing(pts[i], pts[i + 1]);
+      var delta = (bOut - bIn).abs() % 360;
+      if (delta > 180) delta = 360 - delta;
+      if (delta < 5) continue;
+      final a = dist.offset(pts[i], damping[i].toDouble(), bIn + 180);
+      final b = dist.offset(pts[i], damping[i].toDouble(), bOut);
+      entry[i] = a;
+      exit[i] = b;
+      final arc = <LatLng>[];
+      for (int k = 0; k <= 8; k++) {
+        final t = k / 8;
+        final u = 1 - t;
+        arc.add(LatLng(
+          u * u * a.latitude + 2 * u * t * pts[i].latitude + t * t * b.latitude,
+          u * u * a.longitude +
+              2 * u * t * pts[i].longitude +
+              t * t * b.longitude,
+        ));
+      }
+      arcs[i] = arc;
+    }
+
+    // Piezas en orden: tramo i (exit[i] -> entry[i+1]) y arco en i+1
+    final pieces = <RoutePiece>[];
+    void add(List<LatLng> p, bool turn) {
+      if (p.length < 2) return;
+      if (pieces.isNotEmpty && pieces.last.isTurn == turn) {
+        pieces.last.points.addAll(p.skip(1));
+      } else {
+        pieces.add(RoutePiece(List.of(p), turn));
+      }
+    }
+
+    for (int i = 0; i + 1 < pts.length; i++) {
+      add([exit[i], entry[i + 1]], segIsTurn(i));
+      final arc = arcs[i + 1];
+      if (arc.isNotEmpty) {
+        final turnArc = segIsTurn(i) || (i + 2 < pts.length && segIsTurn(i + 1));
+        add(arc, turnArc);
+      }
+    }
+    return pieces;
+  }
+}

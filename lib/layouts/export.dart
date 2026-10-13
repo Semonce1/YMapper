@@ -45,7 +45,11 @@ class ExportBarState extends State<ExportBar> {
       );
 
   /// Genera el KMZ de DJI Fly para los puntos [start]..[end] (inclusivos).
-  Uint8List _buildDjiKmz(ValueListenables listenables, int start, int end) {
+  Uint8List _buildDjiKmz(ValueListenables listenables, int start, int end,
+      {TurnMode? turnMode}) {
+    final mode = turnMode ?? listenables.turnMode;
+    final segmentPoints = listenables.photoLocations.sublist(start, end + 1);
+    final damping = TurnTools.dampingDistances(segmentPoints);
     var missionConfig = MissionConfig(
         flyToWaylineMode: FlyToWaylineMode.safely,
         finishAction: listenables.onFinished,
@@ -76,10 +80,17 @@ class ExportBarState extends State<ExportBar> {
           headingParam: HeadingParam(
               headingMode: HeadingMode.followWayline,
               headingPathMode: HeadingPathMode.followBadArc),
-          turnParam: TurnParam(
-              waypointTurnMode:
-                  WaypointTurnMode.toPointAndStopWithDiscontinuityCurvature,
-              turnDampingDistance: 0),
+          // Curvo: "pasa por el punto y gira antes" (líneas rectas, esquinas
+          // redondeadas). Parada: se detiene en cada punto.
+          turnParam: mode == TurnMode.curved
+              ? TurnParam(
+                  waypointTurnMode:
+                      WaypointTurnMode.toPointAndPassWithContinuityCurvature,
+                  turnDampingDistance: damping[id])
+              : TurnParam(
+                  waypointTurnMode:
+                      WaypointTurnMode.toPointAndStopWithDiscontinuityCurvature,
+                  turnDampingDistance: 0),
           useStraightLine: true,
           actionGroup: ActionGroup(
               id: 0,
@@ -154,19 +165,21 @@ class ExportBarState extends State<ExportBar> {
         utf8.encode(litchi.LitchiCsv.generateCsv(waypoints)));
   }
 
-  Future<void> _export(ValueListenables listenables, {required bool dji}) async {
+  Future<void> _export(ValueListenables listenables,
+      {required bool dji, TurnMode? turnMode, String suffix = ""}) async {
     if (listenables.photoLocations.isEmpty) {
       _snack("No hay ruta para exportar. Dibuja primero el área.");
       return;
     }
     final segments = _segments(listenables);
     final ext = dji ? "kmz" : "csv";
-    final baseName = dji ? "origenlabs_mision" : "origenlabs_litchi";
+    final baseName =
+        (dji ? "origenlabs_mision" : "origenlabs_litchi") + suffix;
 
     Future<bool> saveSegment(int index) {
       final seg = segments[index];
       final bytes = dji
-          ? _buildDjiKmz(listenables, seg.start, seg.end)
+          ? _buildDjiKmz(listenables, seg.start, seg.end, turnMode: turnMode)
           : _buildLitchiCsv(listenables, seg.start, seg.end);
       final name = segments.length == 1
           ? baseName
@@ -383,6 +396,45 @@ class ExportBarState extends State<ExportBar> {
                   label: Text(missions > 1
                       ? "Descargar las $missions misiones"
                       : "Descargar misión (KMZ)")),
+            ),
+            const SizedBox(height: 8),
+            PanelSection(
+              title: "Prueba de campo: comparar giros",
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                      "Descarga la misma misión en los dos modos de giro y vuela ambas para ver cuál respeta mejor DJI Fly.",
+                      style: TextStyle(
+                          fontSize: 12, color: OrigenColors.textMuted)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                            onPressed: hasRoute
+                                ? () => _export(listenables,
+                                    dji: true,
+                                    turnMode: TurnMode.curved,
+                                    suffix: "_curvo")
+                                : null,
+                            child: const Text("Giros curvos")),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton(
+                            onPressed: hasRoute
+                                ? () => _export(listenables,
+                                    dji: true,
+                                    turnMode: TurnMode.stop,
+                                    suffix: "_parada")
+                                : null,
+                            child: const Text("Parar en cada punto")),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 14),
             PanelSection(

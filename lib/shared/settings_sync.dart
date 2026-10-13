@@ -16,5 +16,6 @@ void saveFlightSettings(ValueListenables l) {
     rcLostAction: l.rcLostAction,
     lineExtension: l.lineExtension,
     batteryMinutes: l.batteryMinutes,
+    turnMode: l.turnMode,
   ));
 }

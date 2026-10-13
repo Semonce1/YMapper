@@ -2,6 +2,7 @@ import 'package:dji_waypoint_engine/engine.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:ymapper/components/origen_widgets.dart';
+import 'package:ymapper/core/mission_tools.dart';
 import 'package:ymapper/main.dart';
 import 'package:ymapper/presets/preset_manager.dart';
 import 'package:ymapper/shared/mission_summary.dart';
@@ -181,6 +182,28 @@ class StepParams extends StatelessWidget {
                 ],
               ),
             ),
+            const SizedBox(height: 12),
+            const Text("Tipo de giro",
+                style: TextStyle(fontSize: 13, color: OrigenColors.textMuted)),
+            const SizedBox(height: 6),
+            SegmentedChoice<TurnMode>(
+              options: const [
+                (TurnMode.curved, "Curvo continuo"),
+                (TurnMode.stop, "Parar en cada punto"),
+              ],
+              selected: l.turnMode,
+              onSelected: (m) {
+                l.turnMode = m;
+                saveFlightSettings(l);
+              },
+            ),
+            const SizedBox(height: 6),
+            Text(
+                l.turnMode == TurnMode.curved
+                    ? "El dron pasa por los puntos sin detenerse y redondea las esquinas fuera del área. Más rápido y rinde más la batería."
+                    : "El dron se detiene en cada punto, toma la foto y sigue en línea recta. Más lento, máxima precisión de posición.",
+                style: const TextStyle(
+                    fontSize: 12, color: OrigenColors.textMuted)),
             const SizedBox(height: 12),
             StatGrid(columns: 2, children: [
               StatTile(

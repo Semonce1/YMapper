@@ -112,6 +112,19 @@ class StepMission extends StatelessWidget {
                         : "Sin extensión de líneas: en iPhone los giros pueden quedar dentro del área",
                   ),
                   StatusLine(
+                    ok: true,
+                    text: l.turnMode == TurnMode.curved
+                        ? "Giros curvos: el dron no se detiene, redondea las esquinas (radio máx. ${TurnTools.maxDamping} m)"
+                        : "Parada en cada punto: el dron se detiene en cada foto",
+                  ),
+                  if (l.turnMode == TurnMode.curved)
+                    StatusLine(
+                      ok: s.intervalSec >= 2,
+                      text: s.intervalSec >= 2
+                          ? "Una foto cada ${fmtNum(s.intervalSec)} s en vuelo: la cámara alcanza a disparar"
+                          : "Una foto cada ${fmtNum(s.intervalSec)} s: muy rápido para disparar sin detenerse. Baja la velocidad o usa \"Parar en cada punto\"",
+                    ),
+                  StatusLine(
                     ok: maxPerMission <= MissionStats.maxWaypointsPerMission,
                     text:
                         "Máximo $maxPerMission puntos por misión (límite ${MissionStats.maxWaypointsPerMission})",

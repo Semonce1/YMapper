@@ -208,6 +208,14 @@ class ValueListenables extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Tipo de giro en cada waypoint
+  final _turnMode = ValueNotifier<TurnMode>(TurnMode.curved);
+  TurnMode get turnMode => _turnMode.value;
+  set turnMode(TurnMode value) {
+    _turnMode.value = value;
+    notifyListeners();
+  }
+
   /// Minutos útiles por batería para dividir la misión
   final _batteryMinutes = ValueNotifier<int>(25);
   int get batteryMinutes => _batteryMinutes.value;

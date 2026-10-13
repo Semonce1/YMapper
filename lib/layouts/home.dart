@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:ymapper/components/app_bar.dart';
 import 'package:ymapper/core/drone_mapping_engine.dart';
+import 'package:ymapper/core/mission_tools.dart';
 import 'package:ymapper/github/update_checker.dart';
 import 'package:ymapper/layouts/export.dart';
 import 'package:ymapper/layouts/gcp.dart';
@@ -58,6 +59,7 @@ class _HomeLayoutState extends State<HomeLayout> {
         l.createCameraPoints,
         l.lineExtension,
         l.showPoints,
+        l.turnMode,
       ].join("|");
 
   late MapLayer _selectedMapLayer;
@@ -102,6 +104,7 @@ class _HomeLayoutState extends State<HomeLayout> {
       listenables.groundOffset = aircraftSettings.groundOffset;
       listenables.lineExtension = aircraftSettings.lineExtension;
       listenables.batteryMinutes = aircraftSettings.batteryMinutes;
+      listenables.turnMode = aircraftSettings.turnMode;
     });
 
     var cameraPresets = PresetManager.getPresets();
@@ -316,29 +319,21 @@ class _HomeLayoutState extends State<HomeLayout> {
     // Separar la ruta en líneas de captura y tramos de giro: un tramo es de
     // giro cuando une dos puntos de giro (sin foto).
     _routePolylines.clear();
-    final flags = listenables.photoFlags;
-    bool isTurn(int i) => i < flags.length && !flags[i];
-    List<LatLng> current = [waypoints.first];
-    bool currentIsTurn = waypoints.length > 1 && isTurn(0) && isTurn(1);
-    void flush() {
-      if (current.length < 2) return;
-      _routePolylines.add(currentIsTurn
+    for (final piece in TurnTools.previewPieces(
+        waypoints, listenables.photoFlags, listenables.turnMode)) {
+      _routePolylines.add(piece.isTurn
           ? Polyline(
-              points: List.of(current),
+              points: piece.points,
               strokeWidth: 2,
               color: Colors.white.withAlpha(200),
               pattern: StrokePattern.dashed(segments: const [6, 5]))
           : Polyline(
-              points: List.of(current),
+              points: piece.points,
               strokeWidth: 3.5,
               color: OrigenColors.accent,
               borderStrokeWidth: 1,
               borderColor: Colors.black54));
     }
-    for (int i = 1; i < waypoints.length; i++) {
-      final segIsTurn = isTurn(i - 1) && isTurn(i);
-      if (segIsTurn != currentIsTurn) {
-        flush();
         current = [waypoints[i - 1]];
         currentIsTurn = segIsTurn;
       }

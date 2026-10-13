@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:ymapper/core/mission_tools.dart';
 import 'package:ymapper/main.dart';
 import 'package:dji_waypoint_engine/engine.dart';
 
@@ -16,6 +17,7 @@ class AircraftSettings {
   RCLostAction rcLostAction;
   int lineExtension;
   int batteryMinutes;
+  TurnMode turnMode;
 
   AircraftSettings({
     required this.altitude,
@@ -30,6 +32,7 @@ class AircraftSettings {
     required this.rcLostAction,
     this.lineExtension = 15,
     this.batteryMinutes = 25,
+    this.turnMode = TurnMode.curved,
   });
 
   Map<String, dynamic> toJson() {
@@ -46,6 +49,7 @@ class AircraftSettings {
       'rcLostAction': rcLostAction.name,
       'lineExtension': lineExtension,
       'batteryMinutes': batteryMinutes,
+      'turnMode': turnMode.name,
     };
   }
 
@@ -67,6 +71,8 @@ class AircraftSettings {
           orElse: () => RCLostAction.hover),
       lineExtension: json['lineExtension'] ?? 15,
       batteryMinutes: json['batteryMinutes'] ?? 25,
+      turnMode: TurnMode.values.firstWhere((e) => e.name == json['turnMode'],
+          orElse: () => TurnMode.curved),
     );
   }
 
