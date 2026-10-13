@@ -70,6 +70,22 @@
       <img src="assets/assets/logo.png" alt="OrigenLabs Mapper" />
       <div class="spinner"></div>
     </div>
+    <script>
+      // Comparte un archivo con el menú nativo del sistema (iPhone/Android).
+      // Devuelve "shared", "cancelled", "unsupported" o "error".
+      window.olShareFile = async function (bytes, name, mime) {
+        try {
+          const file = new File([bytes], name, { type: mime || "application/octet-stream" });
+          if (!navigator.canShare || !navigator.canShare({ files: [file] })) {
+            return "unsupported";
+          }
+          await navigator.share({ files: [file], title: name });
+          return "shared";
+        } catch (e) {
+          return e && e.name === "AbortError" ? "cancelled" : "error";
+        }
+      };
+    </script>
     <script src="flutter_bootstrap.js" async></script>
     <script>
       const loading = document.getElementById("loading");

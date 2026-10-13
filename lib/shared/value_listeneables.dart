@@ -208,6 +208,17 @@ class ValueListenables extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Misión guardada que está abierta (null = misión nueva sin guardar)
+  String? currentMissionId;
+
+  /// Nombre de la misión abierta
+  final _currentMissionName = ValueNotifier<String?>(null);
+  String? get currentMissionName => _currentMissionName.value;
+  set currentMissionName(String? value) {
+    _currentMissionName.value = value;
+    notifyListeners();
+  }
+
   /// Tipo de giro en cada waypoint
   final _turnMode = ValueNotifier<TurnMode>(TurnMode.curved);
   TurnMode get turnMode => _turnMode.value;

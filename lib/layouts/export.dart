@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:ymapper/core/drone_mapper_format.dart';
 import 'package:ymapper/core/file_saver.dart';
+import 'package:ymapper/core/share/share_file.dart';
 import 'package:ymapper/core/mission_tools.dart';
 import 'package:ymapper/components/origen_widgets.dart';
 import 'package:ymapper/shared/mission_summary.dart';
@@ -256,6 +257,108 @@ class ExportBarState extends State<ExportBar> {
     _afterExport(dji);
   }
 
+  String _kmzName(ValueListenables l, int index, int total) {
+    final base = (l.currentMissionName ?? "origenlabs_mision")
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9áéíóúñ]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    final safe = base.isEmpty ? "origenlabs_mision" : base;
+    return total == 1
+        ? "$safe.kmz"
+        : "${safe}_m${(index + 1).toString().padLeft(2, '0')}.kmz";
+  }
+
+  /// Abre el menú de compartir del iPhone con el KMZ para enviarlo al Atajo
+  /// "Enviar a DJI Fly". Debe llamarse directamente desde un toque.
+  Future<void> _sendToDjiFly(ValueListenables l, MissionSegment seg,
+      int index, int total) async {
+    final bytes = _buildDjiKmz(l, seg.start, seg.end);
+    final name = _kmzName(l, index, total);
+    final result = await shareFile(bytes, name,
+        mimeType: "application/vnd.google-earth.kmz");
+    switch (result) {
+      case ShareResult.shared:
+        _snack("Misión enviada. Abre DJI Fly y cárgala.");
+      case ShareResult.cancelled:
+        break;
+      case ShareResult.unsupported:
+      case ShareResult.error:
+        // Computador u otro navegador: se descarga el archivo
+        await FileSaver.save(
+            bytes: bytes,
+            fileName: name.replaceAll(".kmz", ""),
+            extension: "kmz");
+        _snack("Este dispositivo no permite compartir; se descargó el KMZ.");
+    }
+  }
+
+  void _shortcutGuide() {
+    Widget item(String n, String text) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                  width: 24,
+                  child: Text("$n.",
+                      style: const TextStyle(
+                          color: OrigenColors.accent,
+                          fontWeight: FontWeight.w600))),
+              Expanded(
+                  child: Text(text,
+                      style: const TextStyle(fontSize: 13, height: 1.4))),
+            ],
+          ),
+        );
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Crear el Atajo \"Enviar a DJI Fly\""),
+        content: SizedBox(
+          width: 460,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                    "Se hace una sola vez en la app Atajos del iPhone (unos 5 minutos).",
+                    style: TextStyle(
+                        fontSize: 13, color: OrigenColors.textMuted)),
+                const SizedBox(height: 8),
+                item("1",
+                    "Abre Atajos, toca + y nombra el atajo \"Enviar a DJI Fly\"."),
+                item("2",
+                    "Toca el ícono de información (i) y activa \"Mostrar en hoja para compartir\". En los tipos de entrada deja solo \"Archivos\"."),
+                item("3",
+                    "Agrega \"Obtener contenido de la carpeta\" y elige: En mi iPhone › DJI Fly › wayline_mission."),
+                item("4",
+                    "Agrega \"Filtrar archivos\": condición Nombre · no es · mission_db. Ordenar por Fecha de modificación, Más reciente primero. Activa Limitar: 1."),
+                item("5",
+                    "Agrega \"Obtener nombre\" del resultado anterior (es el nombre de la carpeta de la misión vacía)."),
+                item("6",
+                    "Agrega \"Establecer nombre\" de la Entrada del atajo como: [Nombre].kmz (usa la variable Nombre)."),
+                item("7",
+                    "Agrega \"Guardar archivo\" con el archivo renombrado. Desactiva \"Preguntar dónde guardar\", elige la carpeta wayline_mission, en Subruta escribe [Nombre]/[Nombre].kmz y activa \"Sobrescribir si el archivo existe\"."),
+                item("8", "Agrega \"Abrir app\" y elige DJI Fly."),
+                const SizedBox(height: 8),
+                const Text(
+                    "Uso: crea la misión vacía en DJI Fly y ciérrala; en esta app toca \"Enviar a DJI Fly\" y elige el atajo. Antes de volar, confirma en DJI Fly que la ruta es la correcta.",
+                    style: TextStyle(
+                        fontSize: 12, color: OrigenColors.textMuted)),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Entendido")),
+        ],
+      ),
+    );
+  }
+
   void _afterExport(bool dji) {
     if (!mounted) return;
     _snack("Misión exportada");
@@ -386,16 +489,50 @@ class ExportBarState extends State<ExportBar> {
               ),
             ),
             const SizedBox(height: 10),
-            SizedBox(
-              height: 52,
-              child: FilledButton.icon(
-                  onPressed: hasRoute
-                      ? () => _export(listenables, dji: true)
-                      : null,
-                  icon: const Icon(Icons.download),
-                  label: Text(missions > 1
-                      ? "Descargar las $missions misiones"
-                      : "Descargar misión (KMZ)")),
+            if (missions <= 1)
+              SizedBox(
+                height: 52,
+                child: FilledButton.icon(
+                    onPressed: hasRoute
+                        ? () => _sendToDjiFly(
+                            listenables, summary.segments.first, 0, 1)
+                        : null,
+                    icon: const Icon(Icons.ios_share),
+                    label: const Text("Enviar a DJI Fly")),
+              )
+            else
+              for (int i = 0; i < missions; i++)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: SizedBox(
+                    height: 48,
+                    child: FilledButton.icon(
+                        onPressed: () => _sendToDjiFly(listenables,
+                            summary.segments[i], i, missions),
+                        icon: const Icon(Icons.ios_share),
+                        label: Text(
+                            "Enviar misión ${i + 1} de $missions · ${summary.segments[i].photos} fotos")),
+                  ),
+                ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                      onPressed: hasRoute
+                          ? () => _export(listenables, dji: true)
+                          : null,
+                      icon: const Icon(Icons.download, size: 18),
+                      label: const Text("Descargar KMZ")),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                      onPressed: _shortcutGuide,
+                      icon: const Icon(Icons.bolt, size: 18),
+                      label: const Text("Crear el Atajo")),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             PanelSection(
@@ -443,10 +580,10 @@ class ExportBarState extends State<ExportBar> {
                 children: [
                   _step("1", "Crea una misión vacía en DJI Fly",
                       "Waypoints, 1 o 2 puntos cualesquiera. Guárdala y cierra la app por completo."),
-                  _step("2", "Guarda el KMZ en Archivos",
-                      "Al descargar, elige \"En mi iPhone\"."),
-                  _step("3", "Reemplaza el archivo",
-                      "Archivos › DJI Fly › wayline_mission › carpeta más reciente. Renombra el KMZ con el nombre de esa carpeta y reemplázalo."),
+                  _step("2", "Toca \"Enviar a DJI Fly\"",
+                      "Elige el Atajo \"Enviar a DJI Fly\" en el menú de compartir. Reemplaza el archivo y abre DJI Fly por ti."),
+                  _step("3", "Sin Atajo: reemplazo manual",
+                      "Descarga el KMZ. En Archivos › DJI Fly › wayline_mission, entra a la carpeta más reciente, renombra el KMZ con el nombre de esa carpeta y reemplázalo."),
                   _step("4", "Abre la misión y vuela",
                       "Revisa la ruta en el mapa de DJI Fly antes de despegar. No la edites ni la guardes allí."),
                 ],

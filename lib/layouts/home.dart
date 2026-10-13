@@ -7,6 +7,7 @@ import 'package:ymapper/core/mission_tools.dart';
 import 'package:ymapper/github/update_checker.dart';
 import 'package:ymapper/layouts/export.dart';
 import 'package:ymapper/layouts/gcp.dart';
+import 'package:ymapper/layouts/missions_page.dart';
 import 'package:ymapper/layouts/steps/step_area.dart';
 import 'package:ymapper/layouts/steps/step_mission.dart';
 import 'package:ymapper/layouts/steps/step_params.dart';
@@ -484,6 +485,17 @@ class _HomeLayoutState extends State<HomeLayout> {
     }
   }
 
+  Future<void> _openMissions(ValueListenables listenables) async {
+    final changed = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => const MissionsPage()));
+    if (changed != true || !mounted) return;
+    if (listenables.polygon.length > 2) {
+      _goTo(2, listenables);
+    } else {
+      setState(() => _step = 0);
+    }
+  }
+
   Widget _stepBody(ValueListenables listenables) {
     switch (_step) {
       case 0:
@@ -524,7 +536,10 @@ class _HomeLayoutState extends State<HomeLayout> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text("OrigenLabs Mapper · Paso ${_step + 1} de 5",
+                      Text(
+                          "${listenables.currentMissionName ?? "Misión sin guardar"} · Paso ${_step + 1} de 5",
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                               fontSize: 12,
                               letterSpacing: 0.4,
@@ -535,6 +550,15 @@ class _HomeLayoutState extends State<HomeLayout> {
                     ],
                   ),
                 ),
+                _mapButton(
+                    icon: Icons.folder_open_outlined,
+                    tooltip: "Mis misiones",
+                    onTap: () => _openMissions(listenables)),
+                const SizedBox(width: 8),
+                _mapButton(
+                    icon: Icons.cloud_upload_outlined,
+                    tooltip: "Guardar misión",
+                    onTap: () => MissionActions.save(context, listenables)),
                 const MappingAppBarMenu(),
               ],
             ),
