@@ -341,3 +341,61 @@ class MissionStats {
     return segments;
   }
 }
+
+/// Utilidades para el polígono del área de vuelo.
+class PolygonTools {
+  static double perimeterMeters(List<LatLng> polygon) {
+    if (polygon.length < 2) return 0;
+    const d = Distance();
+    double total = 0;
+    for (int i = 0; i < polygon.length; i++) {
+      total += d.as(
+          LengthUnit.Meter, polygon[i], polygon[(i + 1) % polygon.length]);
+    }
+    return total;
+  }
+
+  static bool _segmentsCross(LatLng a, LatLng b, LatLng c, LatLng d) {
+    double cross(LatLng o, LatLng p, LatLng q) =>
+        (p.longitude - o.longitude) * (q.latitude - o.latitude) -
+        (p.latitude - o.latitude) * (q.longitude - o.longitude);
+    final d1 = cross(c, d, a);
+    final d2 = cross(c, d, b);
+    final d3 = cross(a, b, c);
+    final d4 = cross(a, b, d);
+    return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+        ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+  }
+
+  /// `true` si dos lados del polígono se cruzan (forma de "moño").
+  static bool isSelfIntersecting(List<LatLng> polygon) {
+    final n = polygon.length;
+    if (n < 4) return false;
+    for (int i = 0; i < n; i++) {
+      final a = polygon[i];
+      final b = polygon[(i + 1) % n];
+      for (int j = i + 2; j < n; j++) {
+        // Lados vecinos comparten vértice: no cuentan
+        if (i == 0 && j == n - 1) continue;
+        final c = polygon[j];
+        final d = polygon[(j + 1) % n];
+        if (_segmentsCross(a, b, c, d)) return true;
+      }
+    }
+    return false;
+  }
+
+  /// Ordena los vértices alrededor del centro del área. Corrige el cruce
+  /// cuando los puntos se marcaron en desorden.
+  static List<LatLng> sortAroundCentroid(List<LatLng> polygon) {
+    if (polygon.length < 3) return List.of(polygon);
+    final lat =
+        polygon.map((p) => p.latitude).reduce((a, b) => a + b) / polygon.length;
+    final lon = polygon.map((p) => p.longitude).reduce((a, b) => a + b) /
+        polygon.length;
+    final sorted = List.of(polygon);
+    sorted.sort((p, q) => atan2(p.latitude - lat, p.longitude - lon)
+        .compareTo(atan2(q.latitude - lat, q.longitude - lon)));
+    return sorted;
+  }
+}

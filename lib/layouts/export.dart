@@ -3,11 +3,10 @@ import 'dart:convert';
 import 'package:ymapper/core/drone_mapper_format.dart';
 import 'package:ymapper/core/file_saver.dart';
 import 'package:ymapper/core/mission_tools.dart';
-import 'package:ymapper/shared/map_provider.dart';
-import 'package:flutter_map/flutter_map.dart' hide Polygon;
+import 'package:ymapper/components/origen_widgets.dart';
+import 'package:ymapper/shared/mission_summary.dart';
+import 'package:ymapper/theme/origen_theme.dart';
 import 'package:geoxml/geoxml.dart';
-import 'package:latlong2/latlong.dart';
-import 'package:universal_io/io.dart';
 import 'package:ymapper/components/popups/dji_load_alert.dart';
 import 'package:ymapper/components/popups/litchi_load_alert.dart';
 import 'package:ymapper/main.dart';
@@ -15,7 +14,6 @@ import 'package:litchi_waypoint_engine/engine.dart' as litchi;
 import 'package:archive/archive.dart';
 import 'package:dji_waypoint_engine/engine.dart';
 import 'package:ymapper/shared/value_listeneables.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide Action;
 import 'package:provider/provider.dart';
@@ -257,133 +255,6 @@ class ExportBarState extends State<ExportBar> {
     }
   }
 
-  Future<void> _importFromKml(ValueListenables listenables) async {
-    var file = await FilePicker.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ["kml"],
-        withData: true,
-        dialogTitle: "Cargar área");
-
-    if (file == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text("No se eligió archivo. Importación cancelada")));
-      }
-      return;
-    }
-
-    late DroneMapperXml kml;
-
-    if (kIsWeb) {
-      kml = await DroneMapperXml.fromKmlString(
-          String.fromCharCodes(file.files.first.bytes!));
-    } else {
-      kml = await DroneMapperXml.fromKmlString(
-          await File(file.files.single.path!).readAsString());
-    }
-
-    if (kml.polygons.isEmpty && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("El KML no tiene polígonos. Importación cancelada")));
-      return;
-    } else if (kml.polygons.length > 1) {
-      if (mounted) {
-        int selectedPolygon = 0;
-        showDialog(
-          context: context,
-          builder: (context) {
-            return AlertDialog(
-              title: const Text("Elige el polígono"),
-              content: StatefulBuilder(
-                builder: (context, setState) {
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                          "El KML tiene varios polígonos, elige uno"),
-                      const Divider(),
-                      SizedBox(
-                        height: MediaQuery.of(context).size.height * 0.5,
-                        width: 400,
-                        child: ListView.separated(
-                          itemCount: kml.polygons.length,
-                          itemBuilder: (context, index) => CheckboxListTile(
-                            value: selectedPolygon == index,
-                            onChanged: (value) {
-                              setState(() {
-                                selectedPolygon = index;
-                              });
-                            },
-                            title: Text(
-                                kml.polygons[index].name ?? "Polígono $index"),
-                          ),
-                          separatorBuilder: (context, index) => const Divider(),
-                          shrinkWrap: true,
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-              actions: [
-                TextButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                    },
-                    child: const Text("Cancelar")),
-                FilledButton(
-                    onPressed: () {
-                      // Ensure a polygon is selected before proceeding
-                      if (selectedPolygon >= 0 &&
-                          selectedPolygon < kml.polygons.length) {
-                        _loadPolygon(
-                          kml.polygons[selectedPolygon].outerBoundaryIs.rtepts
-                              .map((e) => LatLng(e.lat!, e.lon!))
-                              .toList(),
-                        );
-                        Navigator.of(context).pop();
-                      }
-                    },
-                    child: const Text("Cargar")),
-              ],
-            );
-          },
-        );
-      }
-      return;
-    } else {
-      _loadPolygon(kml.polygons.first.outerBoundaryIs.rtepts
-          .map((e) => LatLng(e.lat!, e.lon!))
-          .toList());
-      return;
-    }
-  }
-
-  Future<void> _loadPolygon(List<LatLng> polygon) async {
-    final mapProvider = Provider.of<MapProvider>(context, listen: false);
-    final mapController = mapProvider.mapController;
-
-    Provider.of<ValueListenables>(context, listen: false).polygon = polygon;
-
-    if (polygon.isNotEmpty) {
-      final bounds = LatLngBounds.fromPoints(polygon);
-
-      mapController.fitCamera(
-        CameraFit.bounds(
-          bounds: bounds,
-          padding: const EdgeInsets.all(80),
-          maxZoom: 18.0,
-        ),
-      );
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Área importada")),
-      );
-    }
-  }
-
   Future<void> _exportAreaToKml(ValueListenables listenables) async {
     if (listenables.polygon.length < 3) {
       _snack("No hay área para exportar. Dibuja primero el polígono.");
@@ -408,111 +279,156 @@ class ExportBarState extends State<ExportBar> {
     _snack(ok ? "Área exportada" : "Exportación cancelada");
   }
 
+  Widget _step(String n, String title, String body) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 26,
+            height: 26,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: OrigenColors.accent, width: 1.5),
+            ),
+            child: Text(n,
+                style: const TextStyle(
+                    color: OrigenColors.accent,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text(body,
+                    style: const TextStyle(
+                        fontSize: 13,
+                        height: 1.35,
+                        color: OrigenColors.textMuted)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      child: Consumer<ValueListenables>(builder: (context, listenables, child) {
-        return Column(
+    return Consumer<ValueListenables>(builder: (context, listenables, child) {
+      final summary = MissionSummary.of(listenables);
+      final missions = summary.segments.length;
+      final hasRoute = listenables.photoLocations.isNotEmpty;
+
+      return SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Padding(
-              padding: EdgeInsets.all(8.0),
-              child: Text("Exportar la misión",
-                  style: TextStyle(fontSize: 20)),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: ElevatedButton(
-                  onPressed: () => _export(listenables, dji: true),
-                  child: const Text("Guardar para DJI Fly (KMZ)")),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: ElevatedButton(
-                  onPressed: () => _export(listenables, dji: false),
-                  child: const Text("Guardar para Litchi (CSV)")),
-            ),
-            const Padding(
-              padding: EdgeInsets.all(8.0),
-              child: Text("Importar o exportar el área",
-                  style: TextStyle(fontSize: 20)),
-            ),
-            Wrap(
-              alignment: WrapAlignment.center,
-              runAlignment: WrapAlignment.center,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(4.0),
-                  child: Tooltip(
-                    message: "Reemplaza el área actual",
-                    child: ElevatedButton(
-                        onPressed: () => _importFromKml(listenables),
-                        child: const Text("Importar KML")),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                  color: OrigenColors.surfaceHigh,
+                  borderRadius: BorderRadius.circular(14)),
+              child: Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                        color: const Color(0xFF3A3218),
+                        borderRadius: BorderRadius.circular(12)),
+                    child: const Icon(Icons.flight_takeoff,
+                        color: OrigenColors.accent),
                   ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                            missions > 1
+                                ? "$missions misiones para DJI Fly"
+                                : "Misión para DJI Fly",
+                            style: const TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.w600)),
+                        Text(
+                            hasRoute
+                                ? "${summary.waypoints} puntos · ${fmtNum(summary.totalMinutes, 0)} min · archivo KMZ"
+                                : "Primero dibuja el área",
+                            style: const TextStyle(
+                                fontSize: 12, color: OrigenColors.textMuted)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 52,
+              child: FilledButton.icon(
+                  onPressed: hasRoute
+                      ? () => _export(listenables, dji: true)
+                      : null,
+                  icon: const Icon(Icons.download),
+                  label: Text(missions > 1
+                      ? "Descargar las $missions misiones"
+                      : "Descargar misión (KMZ)")),
+            ),
+            const SizedBox(height: 14),
+            PanelSection(
+              title: "En tu iPhone",
+              child: Column(
+                children: [
+                  _step("1", "Crea una misión vacía en DJI Fly",
+                      "Waypoints, 1 o 2 puntos cualesquiera. Guárdala y cierra la app por completo."),
+                  _step("2", "Guarda el KMZ en Archivos",
+                      "Al descargar, elige \"En mi iPhone\"."),
+                  _step("3", "Reemplaza el archivo",
+                      "Archivos › DJI Fly › wayline_mission › carpeta más reciente. Renombra el KMZ con el nombre de esa carpeta y reemplázalo."),
+                  _step("4", "Abre la misión y vuela",
+                      "Revisa la ruta en el mapa de DJI Fly antes de despegar. No la edites ni la guardes allí."),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text("Otros formatos",
+                style: TextStyle(fontSize: 13, color: OrigenColors.textMuted)),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                      onPressed: hasRoute
+                          ? () => _export(listenables, dji: false)
+                          : null,
+                      child: const Text("Litchi (CSV)")),
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(4.0),
-                  child: ElevatedButton(
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
                       onPressed: () => _exportAreaToKml(listenables),
-                      child: const Text("Exportar KML")),
+                      child: const Text("Área (KML)")),
                 ),
               ],
             ),
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                    border: Border.all(
-                        width: 3,
-                        color:
-                            Theme.of(context).colorScheme.error.withAlpha(127)),
-                    color: Theme.of(context)
-                        .colorScheme
-                        .errorContainer
-                        .withAlpha(25),
-                    borderRadius: BorderRadius.circular(10)),
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const SizedBox(height: 10),
-                      Text(
-                        "Advertencia",
-                        style: TextStyle(
-                            fontSize: 20,
-                            color:
-                                Theme.of(context).colorScheme.onErrorContainer,
-                            fontWeight: FontWeight.bold,
-                            fontStyle: FontStyle.italic),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        "Revisa la ruta en DJI Fly antes de despegar. Úsala bajo tu responsabilidad y cumple el RAC 100 de la Aerocivil.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 16,
-                            color:
-                                Theme.of(context).colorScheme.onErrorContainer),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        "Si notas cualquier problema durante el vuelo, detén la misión de inmediato.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 16,
-                            color:
-                                Theme.of(context).colorScheme.onErrorContainer),
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                  ),
-                ),
-              ),
-            )
+            const SizedBox(height: 14),
+            const Text(
+              "Úsala bajo tu responsabilidad, cumple el RAC 100 de la Aerocivil y detén la misión ante cualquier comportamiento extraño.",
+              style: TextStyle(fontSize: 12, color: OrigenColors.textMuted),
+            ),
           ],
-        );
-      }),
-    );
+        ),
+      );
+    });
   }
 }

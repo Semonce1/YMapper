@@ -125,7 +125,7 @@ class ValueListenables extends ChangeNotifier {
   }
 
   /// Create camera point locations
-  final _createCameraPoints = ValueNotifier<bool>(false);
+  final _createCameraPoints = ValueNotifier<bool>(true);
   bool get createCameraPoints => _createCameraPoints.value;
   set createCameraPoints(bool value) {
     _createCameraPoints.value = value;

@@ -1,126 +1,83 @@
-import 'package:ymapper/components/popups/dji_load_alert.dart';
-import 'package:ymapper/shared/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:ymapper/components/popups/dji_load_alert.dart';
+import 'package:ymapper/components/popups/litchi_load_alert.dart';
+import 'package:ymapper/theme/origen_theme.dart';
 
-import 'popups/litchi_load_alert.dart';
+/// Menú del encabezado: ayuda para cargar misiones, código y créditos.
+class MappingAppBarMenu extends StatelessWidget {
+  const MappingAppBarMenu({super.key});
 
-class MappingAppBar extends StatefulWidget implements PreferredSizeWidget {
-  const MappingAppBar({super.key});
-
-  @override
-  State<MappingAppBar> createState() => _MappingAppBarState();
-
-  @override
-  Size get preferredSize => const Size.fromHeight(56.0);
-}
-
-class _MappingAppBarState extends State<MappingAppBar> {
-  String _version = "";
-
-  @override
-  void initState() {
-    super.initState();
-    PackageInfo.fromPlatform().then((value) {
-      setState(() {
-        _version = "V${value.version} (build ${value.buildNumber})";
-      });
-    });
+  Future<void> _about(BuildContext context) async {
+    String version = "";
+    try {
+      final info = await PackageInfo.fromPlatform();
+      version = "Versión ${info.version} (${info.buildNumber})";
+    } catch (_) {}
+    if (!context.mounted) return;
+    showAboutDialog(
+      context: context,
+      applicationName: "OrigenLabs Mapper",
+      applicationVersion: version,
+      applicationIcon: Image.asset("assets/logo.png", width: 56),
+      applicationLegalese:
+          "© OrigenLabs. Basado en YMapper © 2024 Yaroslav Syubayev, licencia MIT.",
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ThemeManager>(
-      builder: (context, theme, child) => AppBar(
-        title: GestureDetector(
-            onTap: () => showAboutDialog(
-                context: context,
-                applicationVersion: _version,
-                applicationName: "OrigenLabs Mapper",
-                applicationLegalese:
-                    "© OrigenLabs. Basado en YMapper © 2024 Yaroslav Syubayev, licencia MIT.",
-                applicationIcon: Image.asset(
-                  "assets/logo.png",
-                  width: 60,
-                )),
-            child: const Text("OrigenLabs Mapper")),
-        elevation: 10,
-        actions: [
-          PopupMenuButton(
-            offset: const Offset(0, 50),
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                  value: "theme",
-                  child: ListTile(
-                    leading: Icon(
-                        Theme.of(context).brightness == Brightness.light
-                            ? Icons.light_mode
-                            : Icons.dark_mode),
-                    title: const Text("Tema claro/oscuro"),
-                  )),
-              const PopupMenuItem(
-                value: "github",
-                child: ListTile(
-                  leading: Icon(Icons.open_in_browser),
-                  title: Text("Código (GitHub)"),
-                ),
-              ),
-              PopupMenuItem(
-                  child: PopupMenuButton(
-                offset: const Offset(-210, 0),
-                child: const ListTile(
-                  leading: Icon(Icons.help_outline),
-                  title: Text("Cómo cargar la misión"),
-                ),
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: "dji_help",
-                    child: Text("DJI"),
-                  ),
-                  const PopupMenuItem(
-                    value: "litchi_help",
-                    child: ListTile(
-                      title: Text("Litchi"),
-                    ),
-                  ),
-                ],
-                onSelected: (value) {
-                  switch (value) {
-                    case "dji_help":
-                      Navigator.pop(context);
-                      showDialog(
-                          context: context,
-                          builder: (context) =>
-                              const DjiLoadAlert(showCheckbox: false));
-                    case "litchi_help":
-                      Navigator.pop(context);
-                      showDialog(
-                          context: context,
-                          builder: (context) =>
-                              const LitchiLoadAlert(showCheckbox: false));
-                  }
-                },
-              )),
-            ],
-            onSelected: (value) {
-              switch (value) {
-                case "theme":
-                  theme.toggleTheme();
-                  break;
-                case "github":
-                  launchUrl(Uri.https("github.com", "Semonce1/YMapper"));
-                  break;
-                case "help":
-                  launchUrl(Uri.https("mavicpilots.com",
-                      "/threads/waypoints-how-to-back-up-export-import.135283"));
-                  break;
-              }
-            },
-          )
-        ],
+    return PopupMenuButton<String>(
+      tooltip: "Menú",
+      color: OrigenColors.surface,
+      icon: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: const Color(0xEB12161B),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: OrigenColors.border),
+        ),
+        child: const Icon(Icons.menu, color: OrigenColors.text, size: 20),
       ),
+      padding: EdgeInsets.zero,
+      onSelected: (value) {
+        switch (value) {
+          case "dji":
+            showDialog(
+                context: context,
+                builder: (_) => const DjiLoadAlert(showCheckbox: false));
+          case "litchi":
+            showDialog(
+                context: context,
+                builder: (_) => const LitchiLoadAlert(showCheckbox: false));
+          case "github":
+            launchUrl(Uri.https("github.com", "Semonce1/YMapper"));
+          case "about":
+            _about(context);
+        }
+      },
+      itemBuilder: (context) => const [
+        PopupMenuItem(
+            value: "dji",
+            child: ListTile(
+                leading: Icon(Icons.help_outline),
+                title: Text("Cargar en DJI Fly"))),
+        PopupMenuItem(
+            value: "litchi",
+            child: ListTile(
+                leading: Icon(Icons.help_outline),
+                title: Text("Cargar en Litchi"))),
+        PopupMenuItem(
+            value: "github",
+            child: ListTile(
+                leading: Icon(Icons.code), title: Text("Código fuente"))),
+        PopupMenuItem(
+            value: "about",
+            child: ListTile(
+                leading: Icon(Icons.info_outline), title: Text("Acerca de"))),
+      ],
     );
   }
 }
