@@ -72,6 +72,9 @@ class _HomeLayoutState extends State<HomeLayout> {
   final List<Marker> _takeoffLineArrowMarkers = [];
   final List<Marker> _returnLineArrowMarkers = [];
 
+  /// Tramos de la ruta: líneas de captura (amarillo) y giros (punteado)
+  final List<Polyline> _routePolylines = [];
+
   @override
   void initState() {
     super.initState();
@@ -310,6 +313,39 @@ class _HomeLayoutState extends State<HomeLayout> {
         strokeWidth: 3,
         color: Theme.of(context).colorScheme.tertiary);
 
+    // Separar la ruta en líneas de captura y tramos de giro: un tramo es de
+    // giro cuando une dos puntos de giro (sin foto).
+    _routePolylines.clear();
+    final flags = listenables.photoFlags;
+    bool isTurn(int i) => i < flags.length && !flags[i];
+    List<LatLng> current = [waypoints.first];
+    bool currentIsTurn = waypoints.length > 1 && isTurn(0) && isTurn(1);
+    void flush() {
+      if (current.length < 2) return;
+      _routePolylines.add(currentIsTurn
+          ? Polyline(
+              points: List.of(current),
+              strokeWidth: 2,
+              color: Colors.white.withAlpha(200),
+              pattern: StrokePattern.dashed(segments: const [6, 5]))
+          : Polyline(
+              points: List.of(current),
+              strokeWidth: 3.5,
+              color: OrigenColors.accent,
+              borderStrokeWidth: 1,
+              borderColor: Colors.black54));
+    }
+    for (int i = 1; i < waypoints.length; i++) {
+      final segIsTurn = isTurn(i - 1) && isTurn(i);
+      if (segIsTurn != currentIsTurn) {
+        flush();
+        current = [waypoints[i - 1]];
+        currentIsTurn = segIsTurn;
+      }
+      current.add(waypoints[i]);
+    }
+    flush();
+
     // Draw directional arrow markers
     _flightLineArrowMarkers.clear();
     _takeoffLineArrowMarkers.clear();
@@ -322,6 +358,15 @@ class _HomeLayoutState extends State<HomeLayout> {
       double cumulativeDistance = 0.0;
 
       for (int i = 1; i < waypoints.length; i++) {
+        final flagsList = listenables.photoFlags;
+        final turnSegment = i < flagsList.length &&
+            !flagsList[i - 1] &&
+            !flagsList[i];
+        if (turnSegment) {
+          lastPoint = waypoints[i];
+          cumulativeDistance = 0;
+          continue;
+        }
         cumulativeDistance = _placeArrowMarkers(
             lastPoint,
             waypoints[i],
@@ -677,6 +722,7 @@ class _HomeLayoutState extends State<HomeLayout> {
             listenables.photoLocations.clear();
             listenables.photoFlags = [];
             _photoMarkers.clear();
+            _routePolylines.clear();
             listenables.flightLine = null;
             listenables.takeoffLine = null;
             listenables.returnLine = null;
@@ -739,7 +785,7 @@ class _HomeLayoutState extends State<HomeLayout> {
             if (listenables.homePoint != null)
               PolylineLayer(
                 polylines: [
-                  if (listenables.flightLine != null) listenables.flightLine!,
+                  ..._routePolylines,
                   if (listenables.takeoffLine != null)
                     listenables.takeoffLine!,
                   if (listenables.returnLine != null) listenables.returnLine!,

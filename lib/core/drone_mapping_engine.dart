@@ -137,17 +137,51 @@ class DroneMappingEngine {
     return Point(x, y);
   }
 
-  /// Agrega un punto de giro antes y después de la línea, sobre su mismo eje.
-  /// [dirX], [dirY] es el sentido de avance de la línea (vector unitario).
-  List<Point> _extendLine(List<Point> line, num dirX, num dirY) {
-    if (lineExtension <= 0 || line.isEmpty) return line;
-    final first = line.first;
-    final last = line.last;
-    final before = Point(first.x - dirX * lineExtension, first.y - dirY * lineExtension);
-    final after = Point(last.x + dirX * lineExtension, last.y + dirY * lineExtension);
-    _extensionPoints.add(before);
-    _extensionPoints.add(after);
-    return [before, ...line, after];
+  /// Une las líneas de vuelo agregando puntos de giro (sin foto) fuera del
+  /// área. Los giros entre dos líneas consecutivas se alinean a la misma
+  /// coordenada para que el tramo de conexión quede perpendicular y ordenado.
+  ///
+  /// [lines]: cada línea ya en el sentido de vuelo. [dirs]: +1 / -1 según
+  /// el sentido sobre el eje de la línea. [horizontal]: eje x (true) o y.
+  List<Point> _assembleLines(
+      List<List<Point>> lines, List<int> dirs, bool horizontal) {
+    if (lineExtension <= 0 || lines.isEmpty) {
+      return [for (final l in lines) ...l];
+    }
+    num along(Point p) => horizontal ? p.x : p.y;
+    num cross(Point p) => horizontal ? p.y : p.x;
+    Point make(num a, num c) => horizontal ? Point(a, c) : Point(c, a);
+
+    // Coordenada sobre el eje de los giros de entrada y salida
+    final before = <num>[];
+    final after = <num>[];
+    for (int i = 0; i < lines.length; i++) {
+      before.add(along(lines[i].first) - dirs[i] * lineExtension);
+      after.add(along(lines[i].last) + dirs[i] * lineExtension);
+    }
+    // Alinear la salida de la línea i con la entrada de la línea i+1
+    for (int i = 0; i + 1 < lines.length; i++) {
+      // Solo si las líneas van en sentidos opuestos (giro del mismo lado)
+      if (dirs[i] != -dirs[i + 1]) continue;
+      final outer = dirs[i] > 0
+          ? max(after[i], before[i + 1])
+          : min(after[i], before[i + 1]);
+      after[i] = outer;
+      before[i + 1] = outer;
+    }
+
+    final result = <Point>[];
+    for (int i = 0; i < lines.length; i++) {
+      final c = cross(lines[i].first);
+      final pBefore = make(before[i], c);
+      final pAfter = make(after[i], c);
+      _extensionPoints.add(pBefore);
+      _extensionPoints.add(pAfter);
+      result.add(pBefore);
+      result.addAll(lines[i]);
+      result.add(pAfter);
+    }
+    return result;
   }
 
   List<bool> _flagsFor(List<Point> points) =>
@@ -185,6 +219,8 @@ class DroneMappingEngine {
 
     if (homePoint == null) {
       List<Point> waypoints = [];
+      final hLines = <List<Point>>[];
+      final hDirs = <int>[];
       bool reverse = false;
 
       for (num y = minY; y <= maxY; y += horizontalLineSpacing) {
@@ -231,10 +267,13 @@ class DroneMappingEngine {
         if (reverse) {
           line = line.reversed.toList();
         }
-        line = _extendLine(line, reverse ? -1 : 1, 0);
-        waypoints.addAll(line);
+        if (line.isNotEmpty) {
+          hLines.add(line);
+          hDirs.add(reverse ? -1 : 1);
+        }
         reverse = !reverse;
       }
+      waypoints.addAll(_assembleLines(hLines, hDirs, true));
 
       if (fillGrid) {
         var lastHorizontal = waypoints.last;
@@ -340,7 +379,8 @@ class DroneMappingEngine {
       reverse = distTopRight < distBottomRight;
     }
 
-    List<Point> verticalWaypoints = [];
+    final vLines = <List<Point>>[];
+    final vDirs = <int>[];
     bool condition(num x) => deltaX > 0 ? x <= maxHorizontalX + verticalLineSpacing / 2 : x >= minHorizontalX - verticalLineSpacing / 2;
     for (num x = startX; condition(x); x += deltaX) {
       List<Point> column = [];
@@ -357,11 +397,12 @@ class DroneMappingEngine {
       if (!createCameraPoints) {
         column = [column.first, if (column.first != column.last) column.last];
       }
-      verticalWaypoints.addAll(_extendLine(column, 0, reverse ? -1 : 1));
+      vLines.add(column);
+      vDirs.add(reverse ? -1 : 1);
       reverse = !reverse;
     }
 
-    return verticalWaypoints;
+    return _assembleLines(vLines, vDirs, false);
   }
 
   List<Point> _generateHorizontalWaypoints(List<Point> polygon, bool createCameraPoints, Point previous, num minX, num maxX, num minY, num maxY) {
@@ -414,7 +455,8 @@ class DroneMappingEngine {
       reverse = distRightTop < distLeftTop;
     }
 
-    List<Point> horizontalWaypoints = [];
+    final hLines = <List<Point>>[];
+    final hDirs = <int>[];
     bool condition(num y) => deltaY > 0 ? y <= maxY + lineSpacing / 2 : y >= minY - lineSpacing / 2;
     for (num y = startY; condition(y); y += deltaY) {
       List<Point> line = [];
@@ -431,11 +473,12 @@ class DroneMappingEngine {
       if (!createCameraPoints) {
         line = [line.first, if (line.first != line.last) line.last];
       }
-      horizontalWaypoints.addAll(_extendLine(line, reverse ? -1 : 1, 0));
+      hLines.add(line);
+      hDirs.add(reverse ? -1 : 1);
       reverse = !reverse;
     }
 
-    return horizontalWaypoints;
+    return _assembleLines(hLines, hDirs, true);
   }
 
   static double calculateTotalDistance(List<LatLng> waypoints) {
