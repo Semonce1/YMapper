@@ -200,7 +200,7 @@ class StepParams extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
                 l.turnMode == TurnMode.curved
-                    ? "El dron pasa por los puntos sin detenerse y redondea las esquinas fuera del área. Más rápido y rinde más la batería."
+                    ? "Igual que DJI Fly: el dron pasa por los puntos sin detenerse y suaviza los giros, que quedan fuera del área. Más rápido y rinde más la batería."
                     : "El dron se detiene en cada punto, toma la foto y sigue en línea recta. Más lento, máxima precisión de posición.",
                 style: const TextStyle(
                     fontSize: 12, color: OrigenColors.textMuted)),

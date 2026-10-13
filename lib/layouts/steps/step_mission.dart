@@ -114,7 +114,7 @@ class StepMission extends StatelessWidget {
                   StatusLine(
                     ok: true,
                     text: l.turnMode == TurnMode.curved
-                        ? "Giros curvos: el dron no se detiene, redondea las esquinas (radio máx. ${TurnTools.maxDamping} m)"
+                        ? "Giros curvos: el dron pasa por los puntos sin detenerse (como DJI Fly)"
                         : "Parada en cada punto: el dron se detiene en cada foto",
                   ),
                   if (l.turnMode == TurnMode.curved)

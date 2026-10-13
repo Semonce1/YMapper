@@ -441,66 +441,51 @@ class TurnTools {
     return result;
   }
 
-  /// Tramos para dibujar la ruta. En modo curvo las esquinas se redondean
-  /// con la misma distancia que se escribe en el archivo de la misión.
+  /// Tramos para dibujar la ruta tal como la vuela DJI Fly: en modo curvo
+  /// el dron pasa por cada punto siguiendo una curva suave (spline), y en el
+  /// primer y el último punto se detiene.
   static List<RoutePiece> previewPieces(
       List<LatLng> pts, List<bool> photoFlags, TurnMode mode) {
     if (pts.length < 2) return [];
     bool isTurnPoint(int i) => i < photoFlags.length && !photoFlags[i];
     bool segIsTurn(int i) => isTurnPoint(i) && isTurnPoint(i + 1);
 
-    const dist = Distance();
-    final damping = mode == TurnMode.curved
-        ? dampingDistances(pts)
-        : List<int>.filled(pts.length, 0);
-
-    // Para cada vértice interior con cambio de dirección: punto de entrada A,
-    // arco y punto de salida B.
-    final entry = List<LatLng>.of(pts);
-    final exit = List<LatLng>.of(pts);
-    final arcs = List<List<LatLng>>.filled(pts.length, const []);
-    for (int i = 1; i + 1 < pts.length; i++) {
-      if (damping[i] <= 0) continue;
-      final bIn = dist.bearing(pts[i - 1], pts[i]);
-      final bOut = dist.bearing(pts[i], pts[i + 1]);
-      var delta = (bOut - bIn).abs() % 360;
-      if (delta > 180) delta = 360 - delta;
-      if (delta < 5) continue;
-      final a = dist.offset(pts[i], damping[i].toDouble(), bIn + 180);
-      final b = dist.offset(pts[i], damping[i].toDouble(), bOut);
-      entry[i] = a;
-      exit[i] = b;
-      final arc = <LatLng>[];
-      for (int k = 0; k <= 8; k++) {
-        final t = k / 8;
-        final u = 1 - t;
-        arc.add(LatLng(
-          u * u * a.latitude + 2 * u * t * pts[i].latitude + t * t * b.latitude,
-          u * u * a.longitude +
-              2 * u * t * pts[i].longitude +
-              t * t * b.longitude,
+    final last = pts.length - 1;
+    List<LatLng> segment(int i) {
+      final p1 = pts[i];
+      final p2 = pts[i + 1];
+      if (mode == TurnMode.stop) return [p1, p2];
+      // Catmull-Rom: en los extremos (puntos de parada) la tangente sigue
+      // la dirección del propio tramo.
+      final p0 = i > 0 ? pts[i - 1] : p1;
+      final p3 = i + 2 <= last ? pts[i + 2] : p2;
+      final out = <LatLng>[];
+      for (int k = 0; k <= 10; k++) {
+        final t = k / 10;
+        final t2 = t * t;
+        final t3 = t2 * t;
+        double cr(double a, double b, double c, double d) =>
+            0.5 *
+            ((2 * b) +
+                (-a + c) * t +
+                (2 * a - 5 * b + 4 * c - d) * t2 +
+                (-a + 3 * b - 3 * c + d) * t3);
+        out.add(LatLng(
+          cr(p0.latitude, p1.latitude, p2.latitude, p3.latitude),
+          cr(p0.longitude, p1.longitude, p2.longitude, p3.longitude),
         ));
       }
-      arcs[i] = arc;
+      return out;
     }
 
-    // Piezas en orden: tramo i (exit[i] -> entry[i+1]) y arco en i+1
     final pieces = <RoutePiece>[];
-    void add(List<LatLng> p, bool turn) {
-      if (p.length < 2) return;
+    for (int i = 0; i < last; i++) {
+      final seg = segment(i);
+      final turn = segIsTurn(i);
       if (pieces.isNotEmpty && pieces.last.isTurn == turn) {
-        pieces.last.points.addAll(p.skip(1));
+        pieces.last.points.addAll(seg.skip(1));
       } else {
-        pieces.add(RoutePiece(List.of(p), turn));
-      }
-    }
-
-    for (int i = 0; i + 1 < pts.length; i++) {
-      add([exit[i], entry[i + 1]], segIsTurn(i));
-      final arc = arcs[i + 1];
-      if (arc.isNotEmpty) {
-        final turnArc = segIsTurn(i) || (i + 2 < pts.length && segIsTurn(i + 1));
-        add(arc, turnArc);
+        pieces.add(RoutePiece(List.of(seg), turn));
       }
     }
     return pieces;

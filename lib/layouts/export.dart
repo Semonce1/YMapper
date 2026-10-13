@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ymapper/core/drone_mapper_format.dart';
+import 'package:ymapper/core/djifly_kmz.dart';
 import 'package:ymapper/core/file_saver.dart';
 import 'package:ymapper/core/share/share_file.dart';
 import 'package:ymapper/core/mission_tools.dart';
@@ -12,8 +13,6 @@ import 'package:ymapper/components/popups/dji_load_alert.dart';
 import 'package:ymapper/components/popups/litchi_load_alert.dart';
 import 'package:ymapper/main.dart';
 import 'package:litchi_waypoint_engine/engine.dart' as litchi;
-import 'package:archive/archive.dart';
-import 'package:dji_waypoint_engine/engine.dart';
 import 'package:ymapper/shared/value_listeneables.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide Action;
@@ -45,100 +44,24 @@ class ExportBarState extends State<ExportBar> {
         batteryMinutes: l.batteryMinutes,
       );
 
-  /// Genera el KMZ de DJI Fly para los puntos [start]..[end] (inclusivos).
+  /// Genera el KMZ de DJI Fly para los puntos [start]..[end] (inclusivos),
+  /// con la misma estructura que el archivo que produce DJI Fly.
   Uint8List _buildDjiKmz(ValueListenables listenables, int start, int end,
       {TurnMode? turnMode}) {
-    final mode = turnMode ?? listenables.turnMode;
-    final segmentPoints = listenables.photoLocations.sublist(start, end + 1);
-    final damping = TurnTools.dampingDistances(segmentPoints);
-    var missionConfig = MissionConfig(
-        flyToWaylineMode: FlyToWaylineMode.safely,
-        finishAction: listenables.onFinished,
-        // Por normativa: ejecutar la acción de pérdida de señal, no continuar
-        exitOnRCLost: ExitOnRCLost.executeLostAction,
-        rcLostAction: listenables.rcLostAction,
-        globalTransitionalSpeed: listenables.speed,
-        // Valor que espera DJI Fly
-        droneInfo: DroneInfo(droneEnumValue: 68));
-
-    var template = TemplateKml(
-        document: KmlDocumentElement(
-            author: "fly",
-            creationTime: DateTime.now(),
-            modificationTime: DateTime.now(),
-            missionConfig: missionConfig));
-
-    var placemarks = <Placemark>[];
-    for (int i = start; i <= end; i++) {
-      final location = listenables.photoLocations[i];
-      final id = i - start;
-      placemarks.add(Placemark(
-          point: WaypointPoint(
-              longitude: location.longitude, latitude: location.latitude),
-          index: id,
-          height: listenables.altitude,
-          speed: listenables.speed,
-          headingParam: HeadingParam(
-              headingMode: HeadingMode.followWayline,
-              headingPathMode: HeadingPathMode.followBadArc),
-          // Curvo: "pasa por el punto y gira antes" (líneas rectas, esquinas
-          // redondeadas). Parada: se detiene en cada punto.
-          turnParam: mode == TurnMode.curved
-              ? TurnParam(
-                  waypointTurnMode:
-                      WaypointTurnMode.toPointAndPassWithContinuityCurvature,
-                  turnDampingDistance: damping[id])
-              : TurnParam(
-                  waypointTurnMode:
-                      WaypointTurnMode.toPointAndStopWithDiscontinuityCurvature,
-                  turnDampingDistance: 0),
-          useStraightLine: true,
-          actionGroup: ActionGroup(
-              id: 0,
-              startIndex: id,
-              endIndex: id,
-              actions: [
-                if (id == 0)
-                  Action(
-                      id: id,
-                      actionFunction: ActionFunction.gimbalEvenlyRotate,
-                      actionParams: GimbalRotateParams(
-                          pitch: listenables.cameraAngle.toDouble(),
-                          payloadPosition: 0)),
-                if (listenables.delayAtWaypoint > 0 && _isPhoto(listenables, i))
-                  Action(
-                      id: id,
-                      actionFunction: ActionFunction.hover,
-                      actionParams:
-                          HoverParams(hoverTime: listenables.delayAtWaypoint)),
-                if (_isPhoto(listenables, i))
-                  Action(
-                      id: id,
-                      actionFunction: ActionFunction.takePhoto,
-                      actionParams: CameraControlParams(payloadPosition: 0)),
-              ],
-              mode: ActionMode.sequence,
-              trigger: ActionTriggerType.reachPoint)));
-    }
-
-    var waylines = WaylinesWpml(
-        document: WpmlDocumentElement(
-            missionConfig: missionConfig,
-            folderElement: FolderElement(
-                templateId: 0,
-                waylineId: 0,
-                speed: listenables.speed,
-                placemarks: placemarks)));
-
-    final templateBytes = utf8.encode(template.toXmlString(pretty: true));
-    final waylinesBytes = utf8.encode(waylines.toXmlString(pretty: true));
-
-    var archive = Archive();
-    archive.addFile(
-        ArchiveFile('template.kml', templateBytes.length, templateBytes));
-    archive.addFile(
-        ArchiveFile('waylines.wpml', waylinesBytes.length, waylinesBytes));
-    return Uint8List.fromList(ZipEncoder().encode(archive)!);
+    final flags = [
+      for (int i = start; i <= end; i++) _isPhoto(listenables, i),
+    ];
+    return DjiFlyKmz.build(
+      points: listenables.photoLocations.sublist(start, end + 1),
+      photoFlags: flags,
+      altitude: listenables.altitude,
+      speed: listenables.speed,
+      gimbalPitch: listenables.cameraAngle,
+      turnMode: turnMode ?? listenables.turnMode,
+      hoverSeconds: listenables.delayAtWaypoint,
+      finishAction: listenables.onFinished.name,
+      rcLostAction: listenables.rcLostAction.name,
+    );
   }
 
   Uint8List _buildLitchiCsv(ValueListenables listenables, int start, int end) {
