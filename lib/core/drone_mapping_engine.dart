@@ -33,6 +33,16 @@ class DroneMappingEngine {
   /// Ground offset in meters (e.g., height of target surface above ground)
   final double groundOffset;
 
+  /// Distancia (m) que se extiende cada línea fuera del polígono para que los
+  /// giros de DJI Fly ocurran fuera del área de fotos. 0 = sin extensión.
+  final double lineExtension;
+
+  /// Después de [generateWaypoints]: `true` si el waypoint toma foto,
+  /// `false` si es un punto de giro agregado por la extensión de líneas.
+  List<bool> photoFlags = [];
+
+  final Set<Point> _extensionPoints = {};
+
   DroneMappingEngine({
     required this.altitude,
     required this.forwardOverlap,
@@ -44,6 +54,7 @@ class DroneMappingEngine {
     required this.imageHeight,
     required this.angle,
     required this.groundOffset,
+    this.lineExtension = 0,
   });
 
   double get effectiveAltitude => altitude - groundOffset;
@@ -126,6 +137,22 @@ class DroneMappingEngine {
     return Point(x, y);
   }
 
+  /// Agrega un punto de giro antes y después de la línea, sobre su mismo eje.
+  /// [dirX], [dirY] es el sentido de avance de la línea (vector unitario).
+  List<Point> _extendLine(List<Point> line, num dirX, num dirY) {
+    if (lineExtension <= 0 || line.isEmpty) return line;
+    final first = line.first;
+    final last = line.last;
+    final before = Point(first.x - dirX * lineExtension, first.y - dirY * lineExtension);
+    final after = Point(last.x + dirX * lineExtension, last.y + dirY * lineExtension);
+    _extensionPoints.add(before);
+    _extensionPoints.add(after);
+    return [before, ...line, after];
+  }
+
+  List<bool> _flagsFor(List<Point> points) =>
+      points.map((p) => !_extensionPoints.contains(p)).toList();
+
   static double _distance(Point a, Point b) {
     return sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2));
   }
@@ -145,6 +172,8 @@ class DroneMappingEngine {
 
   // Generate waypoints within the polygon in a boustrophedon pattern
   List<LatLng> generateWaypoints(List<LatLng> polygon, bool createCameraPoints, [bool fillGrid = false, LatLng? homePoint]) {
+    _extensionPoints.clear();
+    photoFlags = [];
     var localPolygon = _latLngToMeters(polygon);
     var rotatedPolygon = _rotatePolygon(localPolygon, angle);
     var origin = polygon[0];
@@ -202,6 +231,7 @@ class DroneMappingEngine {
         if (reverse) {
           line = line.reversed.toList();
         }
+        line = _extendLine(line, reverse ? -1 : 1, 0);
         waypoints.addAll(line);
         reverse = !reverse;
       }
@@ -212,6 +242,7 @@ class DroneMappingEngine {
         waypoints.addAll(verticalWaypoints);
       }
 
+      photoFlags = _flagsFor(waypoints);
       var rotatedWaypointsBack = _rotatePolygon(waypoints, -angle);
       return _metersToLatLng(rotatedWaypointsBack, origin);
     } else {
@@ -253,6 +284,7 @@ class DroneMappingEngine {
         selected = best;
       }
 
+      photoFlags = _flagsFor(selected);
       var rotatedWaypointsBack = _rotatePolygon(selected, -angle);
       return _metersToLatLng(rotatedWaypointsBack, origin);
     }
@@ -322,14 +354,10 @@ class DroneMappingEngine {
 
       if (reverse) column = column.reversed.toList();
 
-      if (createCameraPoints) {
-        verticalWaypoints.addAll(column);
-      } else {
-        verticalWaypoints.add(column.first);
-        if (column.first != column.last) {
-          verticalWaypoints.add(column.last);
-        }
+      if (!createCameraPoints) {
+        column = [column.first, if (column.first != column.last) column.last];
       }
+      verticalWaypoints.addAll(_extendLine(column, 0, reverse ? -1 : 1));
       reverse = !reverse;
     }
 
@@ -400,14 +428,10 @@ class DroneMappingEngine {
 
       if (reverse) line = line.reversed.toList();
 
-      if (createCameraPoints) {
-        horizontalWaypoints.addAll(line);
-      } else {
-        horizontalWaypoints.add(line.first);
-        if (line.first != line.last) {
-          horizontalWaypoints.add(line.last);
-        }
+      if (!createCameraPoints) {
+        line = [line.first, if (line.first != line.last) line.last];
       }
+      horizontalWaypoints.addAll(_extendLine(line, reverse ? -1 : 1, 0));
       reverse = !reverse;
     }
 

@@ -1,9 +1,9 @@
 {
-  "name": "YMapper",
-  "short_name": "YMapper",
+  "name": "OrigenLabs Mapper",
+  "short_name": "OrigenLabs",
   "start_url": ".",
   "display": "standalone",
-  "description": "Plan Survey & Photogrammetry Missions to use directly on your DJI Drone from the DJI Fly app",
+  "description": "Planificador de misiones de fotogrametría para drones DJI (DJI Fly)",
   "orientation": "portrait-primary",
   "prefer_related_applications": false
 }

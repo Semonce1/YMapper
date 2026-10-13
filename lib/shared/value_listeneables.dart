@@ -1,3 +1,4 @@
+import 'package:ymapper/core/mission_tools.dart';
 import 'package:ymapper/presets/camera_preset.dart';
 import 'package:dji_waypoint_engine/engine.dart';
 import 'package:flutter/material.dart';
@@ -192,6 +193,42 @@ class ValueListenables extends ChangeNotifier {
   Polyline? get returnLine => _returnPath.value;
   set returnLine(Polyline? value) {
     _returnPath.value = value;
+    notifyListeners();
+  }
+
+  /// Para cada punto de [photoLocations]: `true` si toma foto, `false` si es
+  /// un punto de giro agregado por la extensión de líneas.
+  List<bool> photoFlags = [];
+
+  /// Extensión de cada línea fuera del polígono, en metros
+  final _lineExtension = ValueNotifier<int>(15);
+  int get lineExtension => _lineExtension.value;
+  set lineExtension(int value) {
+    _lineExtension.value = value;
+    notifyListeners();
+  }
+
+  /// Minutos útiles por batería para dividir la misión
+  final _batteryMinutes = ValueNotifier<int>(25);
+  int get batteryMinutes => _batteryMinutes.value;
+  set batteryMinutes(int value) {
+    _batteryMinutes.value = value;
+    notifyListeners();
+  }
+
+  /// Puntos de control importados
+  final _gcps = ValueNotifier<List<GroundControlPoint>>([]);
+  List<GroundControlPoint> get gcps => _gcps.value;
+  set gcps(List<GroundControlPoint> value) {
+    _gcps.value = value;
+    notifyListeners();
+  }
+
+  /// Sistema de coordenadas de los puntos de control
+  final _gcpCrs = ValueNotifier<GcpCrs>(GcpCrs.ctm12);
+  GcpCrs get gcpCrs => _gcpCrs.value;
+  set gcpCrs(GcpCrs value) {
+    _gcpCrs.value = value;
     notifyListeners();
   }
 

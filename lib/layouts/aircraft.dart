@@ -25,6 +25,8 @@ class _AircraftBarState extends State<AircraftBar> {
       cameraAngle: listenables.cameraAngle,
       finishAction: listenables.onFinished,
       rcLostAction: listenables.rcLostAction,
+      lineExtension: listenables.lineExtension,
+      batteryMinutes: listenables.batteryMinutes,
     ));
   }
 
@@ -42,7 +44,7 @@ class _AircraftBarState extends State<AircraftBar> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     CustomTextField(
-                        labelText: "Altitude (m)",
+                        labelText: "Altura de vuelo (m)",
                         min: listenables.groundOffset < 10
                             ? 10
                             : listenables.groundOffset + 1,
@@ -53,7 +55,7 @@ class _AircraftBarState extends State<AircraftBar> {
                         },
                         defaultValue: listenables.altitude),
                     CustomTextField(
-                        labelText: "Ground offset (m)",
+                        labelText: "Altura del objeto sobre el suelo (m)",
                         min: 0,
                         max: listenables.altitude - 1,
                         onChanged: (m) {
@@ -62,7 +64,7 @@ class _AircraftBarState extends State<AircraftBar> {
                         },
                         defaultValue: listenables.groundOffset),
                     CustomTextField(
-                        labelText: "Speed (m/s)",
+                        labelText: "Velocidad (m/s)",
                         min: 0.1,
                         max: 9,
                         defaultValue: listenables.speed,
@@ -83,7 +85,7 @@ class _AircraftBarState extends State<AircraftBar> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     CustomTextField(
-                      labelText: "Overlap (%)",
+                      labelText: "Traslape frontal (%)",
                       min: 1,
                       max: 90,
                       defaultValue: listenables.forwardOverlap,
@@ -93,7 +95,7 @@ class _AircraftBarState extends State<AircraftBar> {
                       },
                     ),
                     CustomTextField(
-                      labelText: "Sidelap (%)",
+                      labelText: "Traslape lateral (%)",
                       min: 1,
                       max: 90,
                       defaultValue: listenables.sideOverlap,
@@ -118,7 +120,7 @@ class _AircraftBarState extends State<AircraftBar> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text("Rotation (°)"),
+                              Text("Rotación de la grilla (°)"),
                               Text("${listenables.rotation}°"),
                             ],
                           ),
@@ -140,7 +142,7 @@ class _AircraftBarState extends State<AircraftBar> {
                       ),
                     ),
                     CustomTextField(
-                      labelText: "Camera angle (deg)",
+                      labelText: "Ángulo de cámara (°)",
                       min: -90,
                       max: 0,
                       defaultValue: listenables.cameraAngle,
@@ -154,8 +156,52 @@ class _AircraftBarState extends State<AircraftBar> {
               ),
             ),
             Card(
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CustomTextField(
+                      labelText: "Minutos útiles por batería",
+                      min: 5,
+                      max: 45,
+                      defaultValue: listenables.batteryMinutes,
+                      onChanged: (minutes) {
+                        listenables.batteryMinutes = minutes.round();
+                        _updateSettings(listenables);
+                      },
+                    ),
+                    CustomTextField(
+                      labelText: "Extensión de líneas fuera del área (m)",
+                      min: 0,
+                      max: 60,
+                      defaultValue: listenables.lineExtension,
+                      onChanged: (meters) {
+                        listenables.lineExtension = meters.round();
+                        _updateSettings(listenables);
+                      },
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Text(
+                        "La extensión agrega un punto de giro sin foto al inicio y al final "
+                        "de cada línea, para que las curvas de DJI Fly (sobre todo en iPhone) "
+                        "queden fuera del área. Usa 0 para desactivarla.",
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Card(
               child: CustomTextField(
-                labelText: "Delay at Waypoint (sec)",
+                labelText: "Pausa en cada punto (s)",
                 min: 0,
                 max: 10,
                 defaultValue: listenables.delayAtWaypoint,
@@ -174,14 +220,14 @@ class _AircraftBarState extends State<AircraftBar> {
                     const SizedBox(height: 10),
                     const Align(
                       child: Text(
-                        "On Finished:",
+                        "Al terminar:",
                         style: TextStyle(fontSize: 16),
                       ),
                     ),
                     const SizedBox(height: 4),
                     Wrap(spacing: 5.0, runSpacing: 5.0, children: [
                       ChoiceChip(
-                          label: const Text('Hover'),
+                          label: const Text('Quedarse en el aire'),
                           selected:
                               listenables.onFinished == FinishAction.noAction,
                           onSelected: (bool selected) {
@@ -191,7 +237,7 @@ class _AircraftBarState extends State<AircraftBar> {
                             _updateSettings(listenables);
                           }),
                       ChoiceChip(
-                          label: const Text('RTH'),
+                          label: const Text('Regresar a casa'),
                           selected:
                               listenables.onFinished == FinishAction.goHome,
                           onSelected: (bool selected) {
@@ -201,7 +247,7 @@ class _AircraftBarState extends State<AircraftBar> {
                             _updateSettings(listenables);
                           }),
                       ChoiceChip(
-                          label: const Text('Land'),
+                          label: const Text('Aterrizar'),
                           selected:
                               listenables.onFinished == FinishAction.autoLand,
                           onSelected: (bool selected) {
@@ -211,7 +257,7 @@ class _AircraftBarState extends State<AircraftBar> {
                             _updateSettings(listenables);
                           }),
                       ChoiceChip(
-                          label: const Text('Go to first waypoint'),
+                          label: const Text('Ir al primer punto'),
                           selected: listenables.onFinished ==
                               FinishAction.gotoFirstWaypoint,
                           onSelected: (bool selected) {
@@ -226,14 +272,14 @@ class _AircraftBarState extends State<AircraftBar> {
                     const SizedBox(height: 10),
                     const Align(
                       child: Text(
-                        "On Signal Loss:",
+                        "Si se pierde la señal:",
                         style: TextStyle(fontSize: 16),
                       ),
                     ),
                     const SizedBox(height: 4),
                     Wrap(spacing: 5.0, runSpacing: 5.0, children: [
                       ChoiceChip(
-                          label: const Text('Hover'),
+                          label: const Text('Quedarse en el aire'),
                           selected:
                               listenables.rcLostAction == RCLostAction.hover,
                           onSelected: (bool selected) {
@@ -243,7 +289,7 @@ class _AircraftBarState extends State<AircraftBar> {
                             _updateSettings(listenables);
                           }),
                       ChoiceChip(
-                          label: const Text('RTH'),
+                          label: const Text('Regresar a casa'),
                           selected:
                               listenables.rcLostAction == RCLostAction.goBack,
                           onSelected: (bool selected) {
@@ -253,7 +299,7 @@ class _AircraftBarState extends State<AircraftBar> {
                             _updateSettings(listenables);
                           }),
                       ChoiceChip(
-                          label: const Text('Land'),
+                          label: const Text('Aterrizar'),
                           selected:
                               listenables.rcLostAction == RCLostAction.landing,
                           onSelected: (bool selected) {

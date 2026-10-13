@@ -1,3 +1,18 @@
+# OrigenLabs Mapper
+
+Planificador de misiones de fotogrametría y topografía para drones DJI que usan DJI Fly (Air 3, Air 3S, Mini 4/5 Pro, Mavic 3/4).
+
+Funciones agregadas por OrigenLabs:
+- Interfaz en español.
+- Resumen con GSD, duración, fotos, waypoints, baterías y tamaño mínimo de diana.
+- División automática en varias misiones (límite de 99 waypoints de DJI Fly y duración de batería).
+- Extensión de líneas fuera del área para que los giros no afecten las fotos.
+- Puntos de control (GCP) en CTM12, MAGNA Bogotá o WGS84: importación CSV, visualización y exportación de coordenadas.
+
+Basado en [YMapper](https://github.com/YLabs-FPV/YMapper) de Yaroslav Syubayev, licencia MIT (ver `LICENSE`).
+
+---
+
 # YMapper
 
 A cross-platform tool to plan and create automatic Survey/Photogrammetry missions for DJI Drones with Waypoints!

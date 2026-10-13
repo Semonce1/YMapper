@@ -14,6 +14,8 @@ class AircraftSettings {
   int cameraAngle;
   FinishAction finishAction;
   RCLostAction rcLostAction;
+  int lineExtension;
+  int batteryMinutes;
 
   AircraftSettings({
     required this.altitude,
@@ -26,6 +28,8 @@ class AircraftSettings {
     required this.cameraAngle,
     required this.finishAction,
     required this.rcLostAction,
+    this.lineExtension = 15,
+    this.batteryMinutes = 25,
   });
 
   Map<String, dynamic> toJson() {
@@ -40,6 +44,8 @@ class AircraftSettings {
       'cameraAngle': cameraAngle,
       'finishAction': finishAction.name,
       'rcLostAction': rcLostAction.name,
+      'lineExtension': lineExtension,
+      'batteryMinutes': batteryMinutes,
     };
   }
 
@@ -59,15 +65,17 @@ class AircraftSettings {
       rcLostAction: RCLostAction.values.firstWhere(
           (e) => e.name == json['rcLostAction'],
           orElse: () => RCLostAction.hover),
+      lineExtension: json['lineExtension'] ?? 15,
+      batteryMinutes: json['batteryMinutes'] ?? 25,
     );
   }
 
   static final _defaultSettings = AircraftSettings(
-    altitude: 50,
+    altitude: 70,
     groundOffset: 0,
     speed: 5,
-    forwardOverlap: 60,
-    sideOverlap: 40,
+    forwardOverlap: 80,
+    sideOverlap: 70,
     rotation: 0,
     delay: 0,
     cameraAngle: -90,

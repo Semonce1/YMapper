@@ -21,18 +21,18 @@ class _LitchiLoadAlertState extends State<LitchiLoadAlert> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Load mission into Litchi'),
+      title: const Text('Cargar la misión en Litchi'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Step 1", style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text("Paso 1", style: TextStyle(fontWeight: FontWeight.bold)),
             RichText(
               text: TextSpan(
                 style: DefaultTextStyle.of(context).style,
                 children: <TextSpan>[
-                  const TextSpan(text: '• Go to '),
+                  const TextSpan(text: '• Entra a '),
                   TextSpan(
                     text: 'Litchi Mission Hub',
                     style: const TextStyle(
@@ -42,14 +42,14 @@ class _LitchiLoadAlertState extends State<LitchiLoadAlert> {
                       ..onTap =
                           () => launchUrl(Uri.https('flylitchi.com', '/hub')),
                   ),
-                  const TextSpan(text: ' and log in.'),
+                  const TextSpan(text: ' e inicia sesión.'),
                 ],
               ),
             ),
             const SizedBox(height: 10),
-            const Text("Step 2", style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text("Paso 2", style: TextStyle(fontWeight: FontWeight.bold)),
             const Text(
-                "• Set the settings correctly, highlighted in blue are the important settings."),
+                "• Configura los ajustes; los importantes están resaltados en azul."),
             const SizedBox(height: 4),
             Image.asset(
               'assets/litchi_alert/settings.jpg',
@@ -57,19 +57,19 @@ class _LitchiLoadAlertState extends State<LitchiLoadAlert> {
             ),
             const SizedBox(height: 4),
             const Text(
-              "The Finish Action should be set the same as in YMapper",
+              "La acción al terminar debe ser la misma que elegiste en OrigenLabs Mapper",
               style: TextStyle(fontStyle: FontStyle.italic),
             ),
             const SizedBox(height: 10),
-            const Text("Step 3", style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text("Paso 3", style: TextStyle(fontWeight: FontWeight.bold)),
             const Text(
-                "• Click on the 'Missions -> Import' and select the mission file."),
+                "• Haz clic en 'Missions -> Import' y elige el archivo de la misión."),
             const SizedBox(height: 4),
             Image.asset('assets/litchi_alert/import.jpg', width: 150),
             const SizedBox(height: 10),
-            const Text("Step 4", style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text("Paso 4", style: TextStyle(fontWeight: FontWeight.bold)),
             const Text(
-                "• Save the mission with a name and it will automatically sync to your device."),
+                "• Guarda la misión con un nombre y se sincronizará con tu dispositivo."),
           ],
         ),
       ),
@@ -91,7 +91,7 @@ class _LitchiLoadAlertState extends State<LitchiLoadAlert> {
                       onTap: () => setState(() {
                             _doNotShowAgain = !_doNotShowAgain;
                           }),
-                      child: const Text("Do not show this again")),
+                      child: const Text("No volver a mostrar")),
                 ],
               ),
             TextButton(
@@ -99,7 +99,7 @@ class _LitchiLoadAlertState extends State<LitchiLoadAlert> {
                 Navigator.of(context).pop();
                 prefs.setBool("litchiWarningDoNotShow", _doNotShowAgain);
               },
-              child: const Text('Done'),
+              child: const Text('Entendido'),
             ),
           ],
         ),

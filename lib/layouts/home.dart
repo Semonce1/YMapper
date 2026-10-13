@@ -7,6 +7,7 @@ import 'package:ymapper/github/update_checker.dart';
 import 'package:ymapper/layouts/aircraft.dart';
 import 'package:ymapper/layouts/camera.dart';
 import 'package:ymapper/layouts/export.dart';
+import 'package:ymapper/layouts/gcp.dart';
 import 'package:ymapper/layouts/info.dart';
 import 'package:ymapper/main.dart';
 import 'package:ymapper/presets/preset_manager.dart';
@@ -52,7 +53,7 @@ class _HomeLayoutState extends State<HomeLayout> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _getLocationAndMoveMap();
 
     _selectedMapLayer =
@@ -73,6 +74,8 @@ class _HomeLayoutState extends State<HomeLayout> with TickerProviderStateMixin {
       listenables.onFinished = aircraftSettings.finishAction;
       listenables.rcLostAction = aircraftSettings.rcLostAction;
       listenables.groundOffset = aircraftSettings.groundOffset;
+      listenables.lineExtension = aircraftSettings.lineExtension;
+      listenables.batteryMinutes = aircraftSettings.batteryMinutes;
     });
 
     var cameraPresets = PresetManager.getPresets();
@@ -106,22 +109,22 @@ class _HomeLayoutState extends State<HomeLayout> with TickerProviderStateMixin {
                 showDialog(
                     context: context,
                     builder: (context) => AlertDialog(
-                          title: const Text('Update available'),
-                          content: Text('Version $latestVersion is available. '
-                              'Do you want to download it?'),
+                          title: const Text('Actualización disponible'),
+                          content: Text('La versión $latestVersion está disponible. '
+                              '¿Quieres descargarla?'),
                           actions: [
                             TextButton(
                                 onPressed: () => Navigator.pop(context),
-                                child: const Text('Later')),
+                                child: const Text('Más tarde')),
                             TextButton(
                                 onPressed: () {
                                   prefs.setString(
                                       "ignoreVersion", latestVersion);
                                   Navigator.pop(context);
                                 },
-                                child: const Text("Ignore this version")),
+                                child: const Text("Ignorar esta versión")),
                             ElevatedButton(
-                                child: const Text('Download'),
+                                child: const Text('Descargar'),
                                 onPressed: () {
                                   launchUrl(Uri.https("github.com",
                                       "YLabs-FPV/YMapper/releases/latest"));
@@ -141,10 +144,11 @@ class _HomeLayoutState extends State<HomeLayout> with TickerProviderStateMixin {
         queryParameters: {
           "q": query,
           "format": "jsonv2",
+          "accept-language": "es",
         },
         options: Options(
           headers: {
-            "User-Agent": "YMapper (https://github.com/YLabs-FPV/YMapper)",
+            "User-Agent": "OrigenLabs Mapper (https://github.com/Semonce1/YMapper)",
           },
         ),
       );
@@ -217,6 +221,7 @@ class _HomeLayoutState extends State<HomeLayout> with TickerProviderStateMixin {
       imageHeight: listenables.imageHeight,
       angle: listenables.rotation.toDouble(),
       groundOffset: listenables.groundOffset.toDouble(),
+      lineExtension: listenables.lineExtension.toDouble(),
     );
 
     var waypoints = droneMapping.generateWaypoints(
@@ -224,6 +229,7 @@ class _HomeLayoutState extends State<HomeLayout> with TickerProviderStateMixin {
         listenables.createCameraPoints,
         listenables.fillGrid,
         listenables.homePoint);
+    listenables.photoFlags = droneMapping.photoFlags;
     listenables.photoLocations = waypoints;
     if (waypoints.isEmpty) return;
 
@@ -231,6 +237,8 @@ class _HomeLayoutState extends State<HomeLayout> with TickerProviderStateMixin {
 
     for (int i = 0; i < waypoints.length; i++) {
       var photoLocation = waypoints[i];
+      final isTurnPoint = i < listenables.photoFlags.length &&
+          !listenables.photoFlags[i];
       _photoMarkers.add(Marker(
         point: photoLocation,
         height: 40, // Increased height to fit number
@@ -239,7 +247,11 @@ class _HomeLayoutState extends State<HomeLayout> with TickerProviderStateMixin {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (listenables.createCameraPoints)
+            if (isTurnPoint)
+              Icon(Icons.u_turn_left,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.outline)
+            else if (listenables.createCameraPoints)
               Icon(Icons.photo_camera,
                   size: 20, // Reduced size for better fit
                   color: Theme.of(context).colorScheme.onPrimaryContainer)
@@ -379,6 +391,7 @@ class _HomeLayoutState extends State<HomeLayout> with TickerProviderStateMixin {
             _buildMarkers(listenables);
           } else {
             listenables.photoLocations.clear();
+            listenables.photoFlags = [];
             _photoMarkers.clear();
             listenables.flightLine = null;
             listenables.takeoffLine = null;
@@ -449,6 +462,37 @@ class _HomeLayoutState extends State<HomeLayout> with TickerProviderStateMixin {
                 MarkerLayer(markers: _returnLineArrowMarkers),
                 // photo markers
                 if (listenables.showPoints) MarkerLayer(markers: _photoMarkers),
+                // puntos de control (GCP)
+                if (listenables.gcps.isNotEmpty)
+                  MarkerLayer(markers: [
+                    for (final gcp in listenables.gcps)
+                      Marker(
+                        point: gcp.position,
+                        width: 80,
+                        height: 44,
+                        alignment: Alignment.center,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.change_history,
+                                size: 22,
+                                color: gcp.isCheck
+                                    ? Colors.orange
+                                    : Colors.lightBlueAccent),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                  color: Colors.black.withAlpha(160),
+                                  borderRadius: BorderRadius.circular(4)),
+                              child: Text(gcp.name,
+                                  style: const TextStyle(
+                                      color: Colors.white, fontSize: 10)),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ]),
                 DragMarkers(markers: [
                   for (var point in listenables.polygon)
                     DragMarker(
@@ -492,7 +536,7 @@ class _HomeLayoutState extends State<HomeLayout> with TickerProviderStateMixin {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                     content: Text(
-                                        "Cannot delete home point while boundary markers exist. Remove all boundary markers first.")),
+                                        "No puedes borrar el punto de despegue mientras haya vértices del área. Bórralos primero.")),
                               );
                             }
                           },
@@ -598,7 +642,7 @@ class _HomeLayoutState extends State<HomeLayout> with TickerProviderStateMixin {
                                 .move(_searchLocations.first.location, 17);
                           },
                           decoration: InputDecoration(
-                              hintText: 'Search location',
+                              hintText: 'Buscar lugar',
                               border: const OutlineInputBorder(),
                               filled: true,
                               suffixIcon: IconButton(
@@ -680,11 +724,16 @@ class _HomeLayoutState extends State<HomeLayout> with TickerProviderStateMixin {
                 children: [
                   TabBar(
                     controller: _tabController,
+                    isScrollable: MediaQuery.of(context).size.width < 420,
+                    tabAlignment: MediaQuery.of(context).size.width < 420
+                        ? TabAlignment.center
+                        : null,
                     tabs: const [
-                      Tab(icon: Icon(Icons.info_outline), text: 'Info'),
-                      Tab(icon: Icon(Icons.airplanemode_on), text: 'Aircraft'),
-                      Tab(icon: Icon(Icons.photo_camera), text: 'Camera'),
-                      Tab(icon: Icon(Icons.file_copy), text: 'File'),
+                      Tab(icon: Icon(Icons.insights), text: 'Resumen'),
+                      Tab(icon: Icon(Icons.airplanemode_on), text: 'Vuelo'),
+                      Tab(icon: Icon(Icons.photo_camera), text: 'Cámara'),
+                      Tab(icon: Icon(Icons.change_history), text: 'GCP'),
+                      Tab(icon: Icon(Icons.file_download), text: 'Exportar'),
                     ],
                   ),
                   Expanded(
@@ -694,6 +743,7 @@ class _HomeLayoutState extends State<HomeLayout> with TickerProviderStateMixin {
                         Info(),
                         AircraftBar(),
                         CameraBar(),
+                        GcpBar(),
                         ExportBar()
                       ]))
                 ],

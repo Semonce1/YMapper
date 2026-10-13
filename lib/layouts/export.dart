@@ -1,4 +1,8 @@
+import 'dart:convert';
+
 import 'package:ymapper/core/drone_mapper_format.dart';
+import 'package:ymapper/core/file_saver.dart';
+import 'package:ymapper/core/mission_tools.dart';
 import 'package:ymapper/shared/map_provider.dart';
 import 'package:flutter_map/flutter_map.dart' hide Polygon;
 import 'package:geoxml/geoxml.dart';
@@ -8,7 +12,6 @@ import 'package:ymapper/components/popups/dji_load_alert.dart';
 import 'package:ymapper/components/popups/litchi_load_alert.dart';
 import 'package:ymapper/main.dart';
 import 'package:litchi_waypoint_engine/engine.dart' as litchi;
-import 'package:universal_html/html.dart' as html;
 import 'package:archive/archive.dart';
 import 'package:dji_waypoint_engine/engine.dart';
 import 'package:ymapper/shared/value_listeneables.dart';
@@ -25,218 +28,50 @@ class ExportBar extends StatefulWidget {
 }
 
 class ExportBarState extends State<ExportBar> {
-  Future<void> _exportForDJIFly(ValueListenables listenables) async {
+  void _snack(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  bool _isPhoto(ValueListenables l, int i) =>
+      l.createCameraPoints &&
+      (i < l.photoFlags.length ? l.photoFlags[i] : true);
+
+  List<MissionSegment> _segments(ValueListenables l) => MissionStats.split(
+        points: l.photoLocations,
+        photoFlags: l.photoFlags,
+        home: l.homePoint,
+        speed: l.speed,
+        delaySec: l.delayAtWaypoint,
+        batteryMinutes: l.batteryMinutes,
+      );
+
+  /// Genera el KMZ de DJI Fly para los puntos [start]..[end] (inclusivos).
+  Uint8List _buildDjiKmz(ValueListenables listenables, int start, int end) {
     var missionConfig = MissionConfig(
-
-        /// Always fly safely
-        /// This is the default for DJI Fly anyway
         flyToWaylineMode: FlyToWaylineMode.safely,
-
-        /// This will be added later
         finishAction: listenables.onFinished,
-
-        /// To comply with EU regulations
-        /// Always execute lost action on RC signal lost
-        /// do not continue the mission
+        // Por normativa: ejecutar la acción de pérdida de señal, no continuar
         exitOnRCLost: ExitOnRCLost.executeLostAction,
-
-        /// For now it's deafult to go back home on RC signal lost
         rcLostAction: listenables.rcLostAction,
-
-        /// The speed to the first waypoint
-        /// For now this is the general speed of the mission
         globalTransitionalSpeed: listenables.speed,
-
-        /// Drone information for DJI Fly is default at 68
-        /// Unsure what other values there can be
-        /// Can't find official documentation
+        // Valor que espera DJI Fly
         droneInfo: DroneInfo(droneEnumValue: 68));
 
     var template = TemplateKml(
         document: KmlDocumentElement(
-
-            /// The author is always `fly` for now
             author: "fly",
             creationTime: DateTime.now(),
             modificationTime: DateTime.now(),
-
-            /// The template and waylines take the same mission config
-            /// Not sure why duplication is necessary
             missionConfig: missionConfig));
 
-    var placemarks = _generateDjiPlacemarks(listenables);
-
-    if (placemarks.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("No waypoints to export. Please add waypoints first")));
-      return;
-    }
-
-    var waylines = WaylinesWpml(
-        document: WpmlDocumentElement(
-            missionConfig: missionConfig,
-            folderElement: FolderElement(
-                templateId: 0, // Only one mission, so this is always 0
-                waylineId: 0, // Only one wayline, so this is always 0
-                speed: listenables.speed,
-                placemarks: placemarks)));
-
-    var templateString = template.toXmlString(pretty: true);
-    var waylinesString = waylines.toXmlString(pretty: true);
-
-    var encoder = ZipEncoder();
-    var archive = Archive();
-
-    archive.addFile(ArchiveFile('template.kml', templateString.length,
-        Uint8List.fromList(templateString.codeUnits)));
-
-    archive.addFile(ArchiveFile('waylines.wpml', waylinesString.length,
-        Uint8List.fromList(waylinesString.codeUnits)));
-
-    var zipData = encoder.encode(archive);
-    var zipBytes = Uint8List.fromList(zipData!);
-
-    String? outputPath;
-
-    if (!kIsWeb) {
-      outputPath = await FilePicker.saveFile(
-          type: FileType.custom,
-          fileName: "output",
-          allowedExtensions: ["kmz"],
-          dialogTitle: "Save Mission");
-
-      if (outputPath == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Mission export cancelled")));
-        }
-        return;
-      }
-
-      // File Saver does not save the file on Desktop platforms
-      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-        if (!outputPath.endsWith(".kmz")) {
-          outputPath += ".kmz";
-        }
-        // Save file for non-web platforms
-        final file = File(outputPath);
-        await file.writeAsBytes(zipBytes);
-      }
-    } else {
-      // Save file for web platform
-      outputPath = "output.kmz";
-      final blob = html.Blob([zipBytes], 'application/octet-stream');
-      final url = html.Url.createObjectUrlFromBlob(blob);
-      html.AnchorElement(href: url)
-        ..setAttribute("download", "output.kmz")
-        ..click();
-      html.Url.revokeObjectUrl(url);
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Mission exported successfully")));
-
-      if (!(prefs.getBool("djiWarningDoNotShow") ?? false)) {
-        showDialog(
-            context: context, builder: (context) => const DjiLoadAlert());
-      }
-    }
-  }
-
-  Future<void> _exportForLithi(ValueListenables listenables) async {
-    final waypoints = _generateLitchiWaypoints(listenables);
-
-    if (waypoints.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("No waypoints to export. Please add waypoints first")));
-      return;
-    }
-
-    String csvContent = litchi.LitchiCsv.generateCsv(waypoints);
-
-    String? outputPath;
-
-    if (!kIsWeb) {
-      outputPath = await FilePicker.saveFile(
-          type: FileType.custom,
-          fileName: "litchi_mission",
-          allowedExtensions: ["csv"],
-          dialogTitle: "Save Mission");
-
-      if (outputPath == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Mission export cancelled")));
-        }
-        return;
-      }
-
-      // File Saver does not save the file on Desktop platforms
-      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-        if (!outputPath.endsWith(".csv")) {
-          outputPath += ".csv";
-        }
-        // Save file for non-web platforms
-        final file = File(outputPath);
-        await file.writeAsString(csvContent);
-      }
-    } else {
-      // Save file for web platform
-      outputPath = "output.csv";
-      final blob = html.Blob([csvContent], 'text/csv');
-      final url = html.Url.createObjectUrlFromBlob(blob);
-      html.AnchorElement(href: url)
-        ..setAttribute("download", "litchi_mission.csv")
-        ..click();
-      html.Url.revokeObjectUrl(url);
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Mission exported successfully")));
-      if (!(prefs.getBool("litchiWarningDoNotShow") ?? false)) {
-        showDialog(
-            context: context, builder: (context) => const LitchiLoadAlert());
-      }
-    }
-  }
-
-  List<litchi.Waypoint> _generateLitchiWaypoints(ValueListenables listenables) {
-    var waypoints = <litchi.Waypoint>[];
-
-    for (var photoLocation in listenables.photoLocations) {
-      waypoints.add(litchi.Waypoint(
-          latitude: photoLocation.latitude,
-          longitude: photoLocation.longitude,
-          altitude: listenables.altitude,
-          speed: listenables.speed.toInt(),
-          gimbalPitch: listenables.cameraAngle,
-          gimbalMode: litchi.GimbalMode.interpolate,
-          actions: [
-            if (listenables.delayAtWaypoint > 0)
-              litchi.Action(
-                  actionType: litchi.ActionType.stayFor,
-
-                  // Litchi uses milliseconds for delay time
-                  actionParam: listenables.delayAtWaypoint.toDouble() * 1000),
-            if (listenables.createCameraPoints)
-              litchi.Action(actionType: litchi.ActionType.takePhoto)
-          ]));
-    }
-
-    return waypoints;
-  }
-
-  List<Placemark> _generateDjiPlacemarks(ValueListenables listenables) {
     var placemarks = <Placemark>[];
-
-    for (var photoLocation in listenables.photoLocations) {
-      int id = listenables.photoLocations.indexOf(photoLocation);
+    for (int i = start; i <= end; i++) {
+      final location = listenables.photoLocations[i];
+      final id = i - start;
       placemarks.add(Placemark(
           point: WaypointPoint(
-              longitude: photoLocation.longitude,
-              latitude: photoLocation.latitude),
+              longitude: location.longitude, latitude: location.latitude),
           index: id,
           height: listenables.altitude,
           speed: listenables.speed,
@@ -260,13 +95,13 @@ class ExportBarState extends State<ExportBar> {
                       actionParams: GimbalRotateParams(
                           pitch: listenables.cameraAngle.toDouble(),
                           payloadPosition: 0)),
-                if (listenables.delayAtWaypoint > 0)
+                if (listenables.delayAtWaypoint > 0 && _isPhoto(listenables, i))
                   Action(
                       id: id,
                       actionFunction: ActionFunction.hover,
                       actionParams:
                           HoverParams(hoverTime: listenables.delayAtWaypoint)),
-                if (listenables.createCameraPoints)
+                if (_isPhoto(listenables, i))
                   Action(
                       id: id,
                       actionFunction: ActionFunction.takePhoto,
@@ -276,19 +111,163 @@ class ExportBarState extends State<ExportBar> {
               trigger: ActionTriggerType.reachPoint)));
     }
 
-    return placemarks;
+    var waylines = WaylinesWpml(
+        document: WpmlDocumentElement(
+            missionConfig: missionConfig,
+            folderElement: FolderElement(
+                templateId: 0,
+                waylineId: 0,
+                speed: listenables.speed,
+                placemarks: placemarks)));
+
+    final templateBytes = utf8.encode(template.toXmlString(pretty: true));
+    final waylinesBytes = utf8.encode(waylines.toXmlString(pretty: true));
+
+    var archive = Archive();
+    archive.addFile(
+        ArchiveFile('template.kml', templateBytes.length, templateBytes));
+    archive.addFile(
+        ArchiveFile('waylines.wpml', waylinesBytes.length, waylinesBytes));
+    return Uint8List.fromList(ZipEncoder().encode(archive)!);
+  }
+
+  Uint8List _buildLitchiCsv(ValueListenables listenables, int start, int end) {
+    var waypoints = <litchi.Waypoint>[];
+    for (int i = start; i <= end; i++) {
+      final location = listenables.photoLocations[i];
+      final photo = _isPhoto(listenables, i);
+      waypoints.add(litchi.Waypoint(
+          latitude: location.latitude,
+          longitude: location.longitude,
+          altitude: listenables.altitude,
+          speed: listenables.speed.toInt(),
+          gimbalPitch: listenables.cameraAngle,
+          gimbalMode: litchi.GimbalMode.interpolate,
+          actions: [
+            if (listenables.delayAtWaypoint > 0 && photo)
+              litchi.Action(
+                  actionType: litchi.ActionType.stayFor,
+                  // Litchi usa milisegundos
+                  actionParam: listenables.delayAtWaypoint.toDouble() * 1000),
+            if (photo) litchi.Action(actionType: litchi.ActionType.takePhoto)
+          ]));
+    }
+    return Uint8List.fromList(
+        utf8.encode(litchi.LitchiCsv.generateCsv(waypoints)));
+  }
+
+  Future<void> _export(ValueListenables listenables, {required bool dji}) async {
+    if (listenables.photoLocations.isEmpty) {
+      _snack("No hay ruta para exportar. Dibuja primero el área.");
+      return;
+    }
+    final segments = _segments(listenables);
+    final ext = dji ? "kmz" : "csv";
+    final baseName = dji ? "origenlabs_mision" : "origenlabs_litchi";
+
+    Future<bool> saveSegment(int index) {
+      final seg = segments[index];
+      final bytes = dji
+          ? _buildDjiKmz(listenables, seg.start, seg.end)
+          : _buildLitchiCsv(listenables, seg.start, seg.end);
+      final name = segments.length == 1
+          ? baseName
+          : "${baseName}_m${(index + 1).toString().padLeft(2, '0')}";
+      return FileSaver.save(
+          bytes: bytes,
+          fileName: name,
+          extension: ext,
+          mimeType: dji ? 'application/octet-stream' : 'text/csv',
+          dialogTitle: "Guardar misión");
+    }
+
+    if (segments.length == 1) {
+      final ok = await saveSegment(0);
+      if (!ok) {
+        _snack("Exportación cancelada");
+        return;
+      }
+      _afterExport(dji);
+      return;
+    }
+
+    // Varias misiones: un botón por archivo (iPhone solo permite una
+    // descarga por toque).
+    await showDialog(
+      context: context,
+      builder: (context) {
+        final saved = <int>{};
+        return StatefulBuilder(builder: (context, setDialogState) {
+          return AlertDialog(
+            title: Text("${segments.length} misiones"),
+            content: SizedBox(
+              width: 420,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                        "La ruta supera el límite de waypoints o la duración de una batería. "
+                        "Descarga cada misión y vuélalas en orden."),
+                    const SizedBox(height: 8),
+                    for (int i = 0; i < segments.length; i++)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: CircleAvatar(child: Text("${i + 1}")),
+                        title: Text(
+                            "${segments[i].waypointCount} puntos · ${segments[i].photos} fotos"),
+                        subtitle: Text(
+                            "${segments[i].minutes.toStringAsFixed(0)} min · "
+                            "${(segments[i].distanceMeters / 1000).toStringAsFixed(2).replaceAll('.', ',')} km"),
+                        trailing: saved.contains(i)
+                            ? const Icon(Icons.check_circle, color: Colors.green)
+                            : IconButton(
+                                tooltip: "Descargar misión ${i + 1}",
+                                icon: const Icon(Icons.download),
+                                onPressed: () async {
+                                  final ok = await saveSegment(i);
+                                  if (ok) setDialogState(() => saved.add(i));
+                                }),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Listo")),
+            ],
+          );
+        });
+      },
+    );
+    _afterExport(dji);
+  }
+
+  void _afterExport(bool dji) {
+    if (!mounted) return;
+    _snack("Misión exportada");
+    final key = dji ? "djiWarningDoNotShow" : "litchiWarningDoNotShow";
+    if (!(prefs.getBool(key) ?? false)) {
+      showDialog(
+          context: context,
+          builder: (context) =>
+              dji ? const DjiLoadAlert() : const LitchiLoadAlert());
+    }
   }
 
   Future<void> _importFromKml(ValueListenables listenables) async {
     var file = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ["kml"],
-        dialogTitle: "Load Area");
+        withData: true,
+        dialogTitle: "Cargar área");
 
     if (file == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text("No file selected. Import cancelled")));
+            content: Text("No se eligió archivo. Importación cancelada")));
       }
       return;
     }
@@ -305,7 +284,7 @@ class ExportBarState extends State<ExportBar> {
 
     if (kml.polygons.isEmpty && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("No polygons found in KML. Import cancelled")));
+          content: Text("El KML no tiene polígonos. Importación cancelada")));
       return;
     } else if (kml.polygons.length > 1) {
       if (mounted) {
@@ -314,14 +293,14 @@ class ExportBarState extends State<ExportBar> {
           context: context,
           builder: (context) {
             return AlertDialog(
-              title: const Text("Select Polygon"),
+              title: const Text("Elige el polígono"),
               content: StatefulBuilder(
                 builder: (context, setState) {
                   return Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Text(
-                          "Multiple polygons found in the KML file, please select one"),
+                          "El KML tiene varios polígonos, elige uno"),
                       const Divider(),
                       SizedBox(
                         height: MediaQuery.of(context).size.height * 0.5,
@@ -336,7 +315,7 @@ class ExportBarState extends State<ExportBar> {
                               });
                             },
                             title: Text(
-                                kml.polygons[index].name ?? "Polygon $index"),
+                                kml.polygons[index].name ?? "Polígono $index"),
                           ),
                           separatorBuilder: (context, index) => const Divider(),
                           shrinkWrap: true,
@@ -351,7 +330,7 @@ class ExportBarState extends State<ExportBar> {
                     onPressed: () {
                       Navigator.of(context).pop();
                     },
-                    child: const Text("Cancel")),
+                    child: const Text("Cancelar")),
                 FilledButton(
                     onPressed: () {
                       // Ensure a polygon is selected before proceeding
@@ -365,7 +344,7 @@ class ExportBarState extends State<ExportBar> {
                         Navigator.of(context).pop();
                       }
                     },
-                    child: const Text("Load")),
+                    child: const Text("Cargar")),
               ],
             );
           },
@@ -400,21 +379,20 @@ class ExportBarState extends State<ExportBar> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Area imported successfully")),
+        const SnackBar(content: Text("Área importada")),
       );
     }
   }
 
   Future<void> _exportAreaToKml(ValueListenables listenables) async {
     if (listenables.polygon.length < 3) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("No polygon to export. Please add waypoints first")));
+      _snack("No hay área para exportar. Dibuja primero el polígono.");
       return;
     }
     var kml = DroneMapperXml();
     kml.polygons = [
       Polygon(
-        name: "Mapping Area",
+        name: "Área de levantamiento",
         outerBoundaryIs: Rte(
             rtepts: listenables.polygon
                 .map((element) =>
@@ -422,51 +400,12 @@ class ExportBarState extends State<ExportBar> {
                 .toList()),
       )
     ];
-
-    var kmlString = kml.toKmlString(pretty: true);
-
-    String? outputPath;
-
-    if (!kIsWeb) {
-      outputPath = await FilePicker.saveFile(
-          type: FileType.custom,
-          fileName: "area",
-          allowedExtensions: ["kml"],
-          dialogTitle: "Save Area");
-
-      if (outputPath == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Area export cancelled")));
-        }
-        return;
-      }
-
-      // File Saver does not save the file on Desktop platforms
-      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-        if (!outputPath.endsWith(".kml")) {
-          outputPath += ".kml";
-        }
-        // Save file for non-web platforms
-        final file = File(outputPath);
-        await file.writeAsBytes(Uint8List.fromList(kmlString.codeUnits));
-      }
-    } else {
-      // Save file for web platform
-      outputPath = "area.kml";
-      final blob = html.Blob([Uint8List.fromList(kmlString.codeUnits)],
-          'application/octet-stream');
-      final url = html.Url.createObjectUrlFromBlob(blob);
-      html.AnchorElement(href: url)
-        ..setAttribute("download", "area.kml")
-        ..click();
-      html.Url.revokeObjectUrl(url);
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Area exported successfully")));
-    }
+    final ok = await FileSaver.save(
+        bytes: Uint8List.fromList(utf8.encode(kml.toKmlString(pretty: true))),
+        fileName: "area",
+        extension: "kml",
+        dialogTitle: "Guardar área");
+    _snack(ok ? "Área exportada" : "Exportación cancelada");
   }
 
   @override
@@ -477,24 +416,24 @@ class ExportBarState extends State<ExportBar> {
           children: [
             const Padding(
               padding: EdgeInsets.all(8.0),
-              child: Text("Export your Survey Mission",
+              child: Text("Exportar la misión",
                   style: TextStyle(fontSize: 20)),
             ),
             Padding(
               padding: const EdgeInsets.all(8.0),
               child: ElevatedButton(
-                  onPressed: () => _exportForDJIFly(listenables),
-                  child: const Text("Save as DJI Fly Waypoint Mission")),
+                  onPressed: () => _export(listenables, dji: true),
+                  child: const Text("Guardar para DJI Fly (KMZ)")),
             ),
             Padding(
               padding: const EdgeInsets.all(8.0),
               child: ElevatedButton(
-                  onPressed: () => _exportForLithi(listenables),
-                  child: const Text("Save as Litchi Mission")),
+                  onPressed: () => _export(listenables, dji: false),
+                  child: const Text("Guardar para Litchi (CSV)")),
             ),
             const Padding(
               padding: EdgeInsets.all(8.0),
-              child: Text("Import/Export Mapping Area",
+              child: Text("Importar o exportar el área",
                   style: TextStyle(fontSize: 20)),
             ),
             Wrap(
@@ -504,17 +443,17 @@ class ExportBarState extends State<ExportBar> {
                 Padding(
                   padding: const EdgeInsets.all(4.0),
                   child: Tooltip(
-                    message: "This will override the current mapping area",
+                    message: "Reemplaza el área actual",
                     child: ElevatedButton(
                         onPressed: () => _importFromKml(listenables),
-                        child: const Text("Import from KML")),
+                        child: const Text("Importar KML")),
                   ),
                 ),
                 Padding(
                   padding: const EdgeInsets.all(4.0),
                   child: ElevatedButton(
                       onPressed: () => _exportAreaToKml(listenables),
-                      child: const Text("Export to KML")),
+                      child: const Text("Exportar KML")),
                 ),
               ],
             ),
@@ -539,7 +478,7 @@ class ExportBarState extends State<ExportBar> {
                     children: [
                       const SizedBox(height: 10),
                       Text(
-                        "Warning",
+                        "Advertencia",
                         style: TextStyle(
                             fontSize: 20,
                             color:
@@ -549,7 +488,7 @@ class ExportBarState extends State<ExportBar> {
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        "I am not responsible for any damage or loss of equipment or data. Use at your own risk.",
+                        "Revisa la ruta en DJI Fly antes de despegar. Úsala bajo tu responsabilidad y cumple el RAC 100 de la Aerocivil.",
                         textAlign: TextAlign.center,
                         style: TextStyle(
                             fontSize: 16,
@@ -558,7 +497,7 @@ class ExportBarState extends State<ExportBar> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        "If you notice any issues during the mission, please stop the mission immediately.",
+                        "Si notas cualquier problema durante el vuelo, detén la misión de inmediato.",
                         textAlign: TextAlign.center,
                         style: TextStyle(
                             fontSize: 16,

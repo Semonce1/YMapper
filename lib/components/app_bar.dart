@@ -38,12 +38,14 @@ class _MappingAppBarState extends State<MappingAppBar> {
             onTap: () => showAboutDialog(
                 context: context,
                 applicationVersion: _version,
-                applicationLegalese: "© 2024 Yaroslav Syubayev",
+                applicationName: "OrigenLabs Mapper",
+                applicationLegalese:
+                    "© OrigenLabs. Basado en YMapper © 2024 Yaroslav Syubayev, licencia MIT.",
                 applicationIcon: Image.asset(
                   "assets/logo.png",
                   width: 60,
                 )),
-            child: const Text("YMapper")),
+            child: const Text("OrigenLabs Mapper")),
         elevation: 10,
         actions: [
           PopupMenuButton(
@@ -56,13 +58,13 @@ class _MappingAppBarState extends State<MappingAppBar> {
                         Theme.of(context).brightness == Brightness.light
                             ? Icons.light_mode
                             : Icons.dark_mode),
-                    title: const Text("Theme"),
+                    title: const Text("Tema claro/oscuro"),
                   )),
               const PopupMenuItem(
                 value: "github",
                 child: ListTile(
                   leading: Icon(Icons.open_in_browser),
-                  title: Text("GitHub"),
+                  title: Text("Código (GitHub)"),
                 ),
               ),
               PopupMenuItem(
@@ -70,7 +72,7 @@ class _MappingAppBarState extends State<MappingAppBar> {
                 offset: const Offset(-210, 0),
                 child: const ListTile(
                   leading: Icon(Icons.help_outline),
-                  title: Text("Help loading mission"),
+                  title: Text("Cómo cargar la misión"),
                 ),
                 itemBuilder: (context) => [
                   const PopupMenuItem(
@@ -108,7 +110,7 @@ class _MappingAppBarState extends State<MappingAppBar> {
                   theme.toggleTheme();
                   break;
                 case "github":
-                  launchUrl(Uri.https("github.com", "YLabs-FPV/YMapper"));
+                  launchUrl(Uri.https("github.com", "Semonce1/YMapper"));
                   break;
                 case "help":
                   launchUrl(Uri.https("mavicpilots.com",

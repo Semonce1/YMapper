@@ -71,7 +71,7 @@ class _CameraBarState extends State<CameraBar> {
               alignment: WrapAlignment.center,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                const Text("Camera Preset:"),
+                const Text("Cámara:"),
                 const SizedBox(width: 10),
                 DropdownButton(
                     value: listenables.selectedCameraPreset,
@@ -101,7 +101,7 @@ class _CameraBarState extends State<CameraBar> {
                     showDialog(
                         context: context,
                         builder: (context) => AlertDialog(
-                              title: const Text("Preset Title"),
+                              title: const Text("Nombre de la cámara"),
                               content: TextField(
                                 autocorrect: false,
                                 autofocus: true,
@@ -116,16 +116,16 @@ class _CameraBarState extends State<CameraBar> {
                                     onPressed: () {
                                       Navigator.pop(context);
                                     },
-                                    child: const Text("Cancel")),
+                                    child: const Text("Cancelar")),
                                 TextButton(
                                     onPressed: () =>
                                         _addPreset(listenables, nameController),
-                                    child: const Text("Save")),
+                                    child: const Text("Guardar")),
                               ],
                             ));
                   },
                   icon: const Icon(Icons.add),
-                  tooltip: "Add",
+                  tooltip: "Agregar",
                 ),
                 IconButton(
                   onPressed: listenables.selectedCameraPreset!.defaultPreset
@@ -155,8 +155,8 @@ class _CameraBarState extends State<CameraBar> {
                         },
                   icon: const Icon(Icons.delete),
                   tooltip: listenables.selectedCameraPreset!.defaultPreset
-                      ? "Can't delete default preset"
-                      : "Delete",
+                      ? "No se puede borrar una cámara predefinida"
+                      : "Borrar",
                 ),
               ],
             ),
@@ -168,7 +168,7 @@ class _CameraBarState extends State<CameraBar> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     CustomTextField(
-                      labelText: "Sensor Width (mm)",
+                      labelText: "Ancho del sensor (mm)",
                       min: 1,
                       max: 50,
                       onChanged: (mm) {
@@ -180,7 +180,7 @@ class _CameraBarState extends State<CameraBar> {
                       enabled: !listenables.selectedCameraPreset!.defaultPreset,
                     ),
                     CustomTextField(
-                      labelText: "Sensor Height (mm)",
+                      labelText: "Alto del sensor (mm)",
                       min: 1,
                       max: 50,
                       defaultValue: listenables.sensorHeight,
@@ -192,7 +192,7 @@ class _CameraBarState extends State<CameraBar> {
                       enabled: !listenables.selectedCameraPreset!.defaultPreset,
                     ),
                     CustomTextField(
-                      labelText: "Focal Length (mm)",
+                      labelText: "Distancia focal (mm)",
                       min: 1,
                       max: 50,
                       defaultValue: listenables.focalLength,
@@ -215,7 +215,7 @@ class _CameraBarState extends State<CameraBar> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     CustomTextField(
-                      labelText: "Image Width (px)",
+                      labelText: "Ancho de imagen (px)",
                       min: 300,
                       max: 10000,
                       onChanged: (px) {
@@ -226,7 +226,7 @@ class _CameraBarState extends State<CameraBar> {
                       enabled: !listenables.selectedCameraPreset!.defaultPreset,
                     ),
                     CustomTextField(
-                      labelText: "Image Height (px)",
+                      labelText: "Alto de imagen (px)",
                       min: 300,
                       max: 10000,
                       defaultValue: listenables.imageHeight.toDouble(),
