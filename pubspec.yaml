@@ -14,6 +14,7 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  qr_flutter: ^4.1.0
   flutter_map: ^8.3.0
   flutter_map_line_editor: ^8.0.0
   flutter_spinbox: ^0.13.1

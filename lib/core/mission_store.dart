@@ -1,6 +1,8 @@
 import 'dart:math';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'package:universal_html/html.dart' as html;
 import 'package:dji_waypoint_engine/engine.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:ymapper/core/mission_tools.dart';
@@ -70,6 +72,36 @@ class SyncKey {
   }
 
   static Future<void> save(String key) => prefs.setString(_prefsKey, key);
+
+  /// Enlace que vincula otro dispositivo con este código (para el QR).
+  static String linkFor(String key) {
+    final base = Uri.base;
+    return Uri(
+        scheme: base.scheme,
+        host: base.host,
+        port: base.hasPort ? base.port : null,
+        path: base.path.isEmpty ? "/" : base.path,
+        queryParameters: {"vincular": key}).toString();
+  }
+
+  /// Si la app se abrió desde un enlace de vinculación (?vincular=CODIGO),
+  /// guarda ese código, limpia la dirección y devuelve `true`.
+  static Future<bool> linkFromUrl() async {
+    final raw = Uri.base.queryParameters["vincular"];
+    if (raw == null) return false;
+    final key = normalize(raw);
+    if (kIsWeb) {
+      // Quitar el código de la barra de direcciones y del historial
+      try {
+        final clean = Uri.base.replace(queryParameters: {}).toString()
+            .replaceFirst(RegExp(r'\?(?=#|$)'), '');
+        html.window.history.replaceState(null, "", clean);
+      } catch (_) {}
+    }
+    if (key == null) return false;
+    await save(key);
+    return true;
+  }
 
   /// Devuelve el código actual o crea uno nuevo.
   static Future<String> ensure() async {

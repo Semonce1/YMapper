@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:ymapper/core/mission_store.dart';
 import 'package:ymapper/shared/mission_summary.dart';
 import 'package:ymapper/shared/value_listeneables.dart';
@@ -220,6 +221,65 @@ class _MissionsPageState extends State<MissionsPage> {
     _snack("Código actualizado");
   }
 
+  void _showLinkQr() {
+    final key = _key;
+    if (key == null) return;
+    final link = SyncKey.linkFor(key);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Vincular otro dispositivo"),
+        content: SizedBox(
+          width: 320,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                  "Escanea este código con la cámara del celular. Se abrirá la app ya vinculada y verás las mismas misiones.",
+                  style:
+                      TextStyle(fontSize: 13, color: OrigenColors.textMuted)),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12)),
+                child: QrImageView(
+                  data: link,
+                  size: 220,
+                  backgroundColor: Colors.white,
+                  semanticsLabel: "Código QR para vincular",
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text("O escribe el código en el otro dispositivo:",
+                  style:
+                      TextStyle(fontSize: 12, color: OrigenColors.textMuted)),
+              SelectableText(key,
+                  style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.1)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: link));
+                Navigator.pop(context);
+                _snack("Enlace copiado: ábrelo en el otro dispositivo");
+              },
+              child: const Text("Copiar enlace")),
+          FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Listo")),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final current =
@@ -229,6 +289,10 @@ class _MissionsPageState extends State<MissionsPage> {
         backgroundColor: OrigenColors.background,
         title: const Text("Mis misiones"),
         actions: [
+          TextButton.icon(
+              onPressed: _key == null ? null : _showLinkQr,
+              icon: const Icon(Icons.qr_code_2),
+              label: const Text("Vincular celular")),
           IconButton(
               tooltip: "Actualizar",
               onPressed: () => setState(_reload),
@@ -273,13 +337,34 @@ class _MissionsPageState extends State<MissionsPage> {
                 }
                 final missions = snap.data ?? [];
                 if (missions.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Padding(
-                      padding: EdgeInsets.all(32),
-                      child: Text(
-                          "Todavía no tienes misiones guardadas.\nDibuja un área y toca el ícono de guardar arriba.",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: OrigenColors.textMuted)),
+                      padding: const EdgeInsets.all(28),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.devices_outlined,
+                              size: 40, color: OrigenColors.textMuted),
+                          const SizedBox(height: 12),
+                          const Text(
+                              "No hay misiones en este dispositivo.",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  fontSize: 15, fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 6),
+                          const Text(
+                              "Si guardaste misiones en el computador, vincúlalo: allá abre Mis misiones › Vincular celular y escanea el QR con este teléfono.",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  color: OrigenColors.textMuted)),
+                          const SizedBox(height: 14),
+                          OutlinedButton.icon(
+                              onPressed: _enterKey,
+                              icon: const Icon(Icons.vpn_key_outlined),
+                              label: const Text("Escribir el código a mano")),
+                        ],
+                      ),
                     ),
                   );
                 }
@@ -390,6 +475,11 @@ class _MissionsPageState extends State<MissionsPage> {
                                 color: OrigenColors.textMuted)),
                       ],
                     ),
+                  ),
+                  IconButton(
+                    tooltip: "Vincular celular (QR)",
+                    onPressed: _key == null ? null : _showLinkQr,
+                    icon: const Icon(Icons.qr_code_2),
                   ),
                   IconButton(
                     tooltip: "Copiar código",

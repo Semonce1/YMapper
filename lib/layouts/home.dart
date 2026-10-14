@@ -8,6 +8,7 @@ import 'package:ymapper/github/update_checker.dart';
 import 'package:ymapper/layouts/export.dart';
 import 'package:ymapper/layouts/gcp.dart';
 import 'package:ymapper/layouts/missions_page.dart';
+import 'package:ymapper/core/mission_store.dart';
 import 'package:ymapper/layouts/steps/step_area.dart';
 import 'package:ymapper/layouts/steps/step_mission.dart';
 import 'package:ymapper/layouts/steps/step_params.dart';
@@ -83,6 +84,20 @@ class _HomeLayoutState extends State<HomeLayout> {
     super.initState();
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _getLocationAndMoveMap());
+
+    // Vinculación desde el QR de otro dispositivo
+    SyncKey.linkFromUrl().then((linked) {
+      if (!linked || !mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text(
+            "Dispositivo vinculado: ya ves las misiones de tu otro dispositivo"),
+        action: SnackBarAction(
+            label: "Ver",
+            onPressed: () => _openMissions(Provider.of<ValueListenables>(
+                context,
+                listen: false))),
+      ));
+    });
 
     // Satélite por defecto: es lo útil para ubicar el lote
     _selectedMapLayer =

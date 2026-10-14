@@ -46,6 +46,12 @@ async function migrate() {
 
 const app = express();
 app.disable("x-powered-by");
+app.set("etag", false);
+// Las respuestas dependen del código de sincronización: nunca se guardan en caché
+app.use((_req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
 app.use(express.json({ limit: "2mb" }));
 
 // CORS: solo los dominios de la app
