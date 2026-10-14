@@ -30,7 +30,7 @@ class PresetManager {
         imageWidth: 4032,
         imageHeight: 3024),
     CameraPreset(
-        name: "DJI Air 3 (50 MP)",
+        name: "DJI Air 3 (48 MP)",
         defaultPreset: true,
         sensorWidth: 9.65,
         sensorHeight: 7.24,
@@ -117,6 +117,14 @@ class PresetManager {
         focalLength: 10.3,
         imageWidth: 5472,
         imageHeight: 3648),
+    CameraPreset(
+        name: "DJI Mavic 3 (20 MP)",
+        defaultPreset: true,
+        sensorWidth: 17.3,
+        sensorHeight: 13,
+        focalLength: 12.29,
+        imageWidth: 5280,
+        imageHeight: 3956),
     CameraPreset(
         name: "DJI Mavic 3E",
         defaultPreset: true,

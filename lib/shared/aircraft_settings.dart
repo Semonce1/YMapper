@@ -18,6 +18,9 @@ class AircraftSettings {
   int lineExtension;
   int batteryMinutes;
   TurnMode turnMode;
+  String droneId;
+  int areaMargin;
+  bool startAtHome;
 
   AircraftSettings({
     required this.altitude,
@@ -33,6 +36,9 @@ class AircraftSettings {
     this.lineExtension = 15,
     this.batteryMinutes = 25,
     this.turnMode = TurnMode.curved,
+    this.droneId = "air3",
+    this.areaMargin = 0,
+    this.startAtHome = false,
   });
 
   Map<String, dynamic> toJson() {
@@ -50,6 +56,9 @@ class AircraftSettings {
       'lineExtension': lineExtension,
       'batteryMinutes': batteryMinutes,
       'turnMode': turnMode.name,
+      'droneId': droneId,
+      'areaMargin': areaMargin,
+      'startAtHome': startAtHome,
     };
   }
 
@@ -73,6 +82,9 @@ class AircraftSettings {
       batteryMinutes: json['batteryMinutes'] ?? 25,
       turnMode: TurnMode.values.firstWhere((e) => e.name == json['turnMode'],
           orElse: () => TurnMode.curved),
+      droneId: json['droneId'] ?? "air3",
+      areaMargin: json['areaMargin'] ?? 0,
+      startAtHome: json['startAtHome'] ?? false,
     );
   }
 

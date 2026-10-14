@@ -119,10 +119,10 @@ class StepMission extends StatelessWidget {
                   ),
                   if (l.turnMode == TurnMode.curved)
                     StatusLine(
-                      ok: s.intervalSec >= 2,
-                      text: s.intervalSec >= 2
+                      ok: s.intervalSec >= s.minIntervalSec,
+                      text: s.intervalSec >= s.minIntervalSec
                           ? "Una foto cada ${fmtNum(s.intervalSec)} s en vuelo: la cámara alcanza a disparar"
-                          : "Una foto cada ${fmtNum(s.intervalSec)} s: muy rápido para disparar sin detenerse. Baja la velocidad o usa \"Parar en cada punto\"",
+                          : "Una foto cada ${fmtNum(s.intervalSec)} s: la cámara necesita ${fmtNum(s.minIntervalSec, 0)} s entre fotos. Baja la velocidad a ${fmtNum(s.maxSpeed)} m/s o usa \"Parar en cada punto\"",
                     ),
                   StatusLine(
                     ok: maxPerMission <= MissionStats.maxWaypointsPerMission,

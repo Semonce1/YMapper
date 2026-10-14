@@ -37,6 +37,10 @@ class DroneMappingEngine {
   /// giros de DJI Fly ocurran fuera del área de fotos. 0 = sin extensión.
   final double lineExtension;
 
+  /// Margen (m) para tomar fotos por fuera del borde del área: el polígono se
+  /// amplía esta distancia antes de generar las líneas. 0 = sin margen.
+  final double areaMargin;
+
   /// Después de [generateWaypoints]: `true` si el waypoint toma foto,
   /// `false` si es un punto de giro agregado por la extensión de líneas.
   List<bool> photoFlags = [];
@@ -55,6 +59,7 @@ class DroneMappingEngine {
     required this.angle,
     required this.groundOffset,
     this.lineExtension = 0,
+    this.areaMargin = 0,
   });
 
   double get effectiveAltitude => altitude - groundOffset;
@@ -98,6 +103,49 @@ class DroneMappingEngine {
           (point.x / (40075000 * cos((originLat * pi) / 180) / 360));
       return LatLng(lat, lng);
     }).toList();
+  }
+
+  /// Amplía (d > 0) un polígono simple desplazando cada lado hacia afuera.
+  /// Las esquinas muy agudas se recortan para no generar puntas largas.
+  static List<Point> offsetPolygon(List<Point> poly, double d) {
+    final n = poly.length;
+    if (d == 0 || n < 3) return poly;
+    double area2 = 0;
+    for (int i = 0; i < n; i++) {
+      final a = poly[i], b = poly[(i + 1) % n];
+      area2 += a.x * b.y - b.x * a.y;
+    }
+    // Normal exterior: a la derecha si el polígono va en sentido antihorario
+    final sign = area2 >= 0 ? 1.0 : -1.0;
+    final normals = <Point<double>>[];
+    for (int i = 0; i < n; i++) {
+      final a = poly[i], b = poly[(i + 1) % n];
+      final dx = (b.x - a.x).toDouble(), dy = (b.y - a.y).toDouble();
+      final len = sqrt(dx * dx + dy * dy);
+      normals.add(len == 0
+          ? const Point(0.0, 0.0)
+          : Point(sign * dy / len, -sign * dx / len));
+    }
+    final result = <Point>[];
+    for (int i = 0; i < n; i++) {
+      final nPrev = normals[(i - 1 + n) % n];
+      final nNext = normals[i];
+      var bx = nPrev.x + nNext.x, by = nPrev.y + nNext.y;
+      final bl = sqrt(bx * bx + by * by);
+      final p = poly[i];
+      if (bl < 1e-9) {
+        result.add(Point(p.x + nNext.x * d, p.y + nNext.y * d));
+        continue;
+      }
+      bx /= bl;
+      by /= bl;
+      // Distancia sobre la bisectriz para que ambos lados queden a d
+      final cosHalf = bx * nNext.x + by * nNext.y;
+      var m = cosHalf.abs() < 1e-6 ? d : d / cosHalf;
+      if (m.abs() > 3 * d.abs()) m = 3 * d * m.sign;
+      result.add(Point(p.x + bx * m, p.y + by * m));
+    }
+    return result;
   }
 
   // Rotate a point around the origin by a given angle
@@ -208,7 +256,8 @@ class DroneMappingEngine {
   List<LatLng> generateWaypoints(List<LatLng> polygon, bool createCameraPoints, [bool fillGrid = false, LatLng? homePoint]) {
     _extensionPoints.clear();
     photoFlags = [];
-    var localPolygon = _latLngToMeters(polygon);
+    var localPolygon =
+        offsetPolygon(_latLngToMeters(polygon), areaMargin);
     var rotatedPolygon = _rotatePolygon(localPolygon, angle);
     var origin = polygon[0];
 

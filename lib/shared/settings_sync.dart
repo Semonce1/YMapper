@@ -17,5 +17,8 @@ void saveFlightSettings(ValueListenables l) {
     lineExtension: l.lineExtension,
     batteryMinutes: l.batteryMinutes,
     turnMode: l.turnMode,
+    droneId: l.droneId,
+    areaMargin: l.areaMargin,
+    startAtHome: l.startAtHome,
   ));
 }

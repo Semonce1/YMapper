@@ -21,6 +21,13 @@ class MissionSummary {
   final bool selfIntersecting;
   final double blurCm;
 
+  /// Tiempo mínimo entre fotos que soporta la cámara en vuelo (s)
+  final double minIntervalSec;
+
+  /// Velocidad máxima sugerida (m/s): respeta el intervalo mínimo entre
+  /// fotos y un barrido ≤ ½ GSD con obturador de 1/1000 s.
+  final double maxSpeed;
+
   MissionSummary._({
     required this.hasArea,
     required this.areaM2,
@@ -38,6 +45,8 @@ class MissionSummary {
     required this.segments,
     required this.selfIntersecting,
     required this.blurCm,
+    required this.minIntervalSec,
+    required this.maxSpeed,
   });
 
   double get totalMinutes => segments.fold(0.0, (a, s) => a + s.minutes);
@@ -71,8 +80,18 @@ class MissionSummary {
         speed: l.speed,
         delaySec: l.delayAtWaypoint,
         batteryMinutes: l.batteryMinutes,
+        maxWaypoints: l.startAtHome && l.homePoint != null
+            ? MissionStats.maxWaypointsPerMission - 1
+            : MissionStats.maxWaypointsPerMission,
       );
     }
+
+    final minInterval = MissionStats.minPhotoIntervalSec(l.imageWidth);
+    // Con parada en cada punto la cámara no limita la velocidad, solo el barrido
+    final maxSpeed = MissionStats.suggestedMaxSpeed(
+        photoSpacing: photoSpacing,
+        gsdCm: gsd,
+        minIntervalSec: l.turnMode == TurnMode.curved ? minInterval : 1e-6);
 
     return MissionSummary._(
       hasArea: hasArea,
@@ -100,6 +119,8 @@ class MissionSummary {
       selfIntersecting: PolygonTools.isSelfIntersecting(l.polygon),
       // Desplazamiento durante una exposición de 1/1000 s
       blurCm: l.speed * 0.1,
+      minIntervalSec: minInterval,
+      maxSpeed: maxSpeed,
     );
   }
 }

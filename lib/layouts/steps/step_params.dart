@@ -2,8 +2,10 @@ import 'package:dji_waypoint_engine/engine.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:ymapper/components/origen_widgets.dart';
+import 'package:ymapper/core/drone_models.dart';
 import 'package:ymapper/core/mission_tools.dart';
 import 'package:ymapper/main.dart';
+import 'package:ymapper/presets/camera_preset.dart';
 import 'package:ymapper/presets/preset_manager.dart';
 import 'package:ymapper/shared/mission_summary.dart';
 import 'package:ymapper/shared/settings_sync.dart';
@@ -11,6 +13,17 @@ import 'package:ymapper/shared/value_listeneables.dart';
 import 'package:ymapper/theme/origen_theme.dart';
 
 enum SurveyType { ortho, doubleGrid, oblique }
+
+/// Carga un perfil de cámara en el estado de la app.
+void applyCameraPreset(ValueListenables l, CameraPreset p) {
+  l.selectedCameraPreset = p;
+  l.sensorWidth = p.sensorWidth;
+  l.sensorHeight = p.sensorHeight;
+  l.focalLength = p.focalLength;
+  l.imageWidth = p.imageWidth;
+  l.imageHeight = p.imageHeight;
+  prefs.setString("latestPreset", p.name);
+}
 
 /// Paso 2: tipo de levantamiento y parámetros de vuelo.
 class StepParams extends StatelessWidget {
@@ -55,6 +68,8 @@ class StepParams extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            _DroneCard(l: l),
+            const SizedBox(height: 12),
             SegmentedChoice<SurveyType>(
               options: const [
                 (SurveyType.ortho, "Ortofoto"),
@@ -167,6 +182,7 @@ class StepParams extends StatelessWidget {
                       saveFlightSettings(l);
                     },
                   ),
+                  _SpeedHint(l: l, s: s),
                   LabeledSlider(
                     label: "Dirección de las líneas",
                     unit: "°",
@@ -179,6 +195,7 @@ class StepParams extends StatelessWidget {
                       saveFlightSettings(l);
                     },
                   ),
+                  _AlignButton(l: l),
                 ],
               ),
             ),
@@ -261,6 +278,7 @@ class _Advanced extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         DropdownButtonFormField<String>(
+          key: ValueKey("preset-${selected.name}"),
           initialValue: selected.name,
           isExpanded: true,
           decoration: const InputDecoration(labelText: "Cámara"),
@@ -269,14 +287,10 @@ class _Advanced extends StatelessWidget {
               DropdownMenuItem(value: p.name, child: Text(p.name)),
           ],
           onChanged: (name) {
-            final p = presets.firstWhere((e) => e.name == name);
-            l.selectedCameraPreset = p;
-            l.sensorWidth = p.sensorWidth;
-            l.sensorHeight = p.sensorHeight;
-            l.focalLength = p.focalLength;
-            l.imageWidth = p.imageWidth;
-            l.imageHeight = p.imageHeight;
-            prefs.setString("latestPreset", p.name);
+            applyCameraPreset(l, presets.firstWhere((e) => e.name == name));
+            l.droneId =
+                DroneModels.forPreset(name)?.id ?? DroneModels.customId;
+            saveFlightSettings(l);
           },
         ),
         const SizedBox(height: 4),
@@ -312,6 +326,18 @@ class _Advanced extends StatelessWidget {
                 },
               ),
               LabeledSlider(
+                label: "Margen de fotos fuera del área",
+                unit: " m",
+                value: l.areaMargin.toDouble(),
+                min: 0,
+                max: 40,
+                divisions: 8,
+                onChanged: (v) {
+                  l.areaMargin = v.round();
+                  saveFlightSettings(l);
+                },
+              ),
+              LabeledSlider(
                 label: "Altura del objeto sobre el suelo",
                 unit: " m",
                 value: l.groundOffset.toDouble(),
@@ -337,7 +363,30 @@ class _Advanced extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 4),
+        Text(
+            l.areaMargin == 0
+                ? "Margen 0: todos los centros de foto quedan dentro del área. Súbelo para que los bordes del modelo salgan completos (en oblicuo 3D usa 30–35 m)."
+                : "Toma fotos hasta ${l.areaMargin} m por fuera del borde: bordes del modelo más completos, a cambio de más fotos.",
+            style: const TextStyle(fontSize: 12, color: OrigenColors.textMuted)),
+        const SizedBox(height: 4),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: l.startAtHome,
+          title: const Text("Primer punto sobre el Home",
+              style: TextStyle(fontSize: 14)),
+          subtitle: Text(
+              l.homePoint == null
+                  ? "Marca el Home en el mapa para usar esta opción."
+                  : "Cada misión arranca con un punto sin foto sobre el Home: el dron sube ahí antes de ir al área.",
+              style: const TextStyle(
+                  fontSize: 12, color: OrigenColors.textMuted)),
+          onChanged: (v) {
+            l.startAtHome = v;
+            saveFlightSettings(l);
+          },
+        ),
+        const SizedBox(height: 8),
         const Text("Al terminar la misión",
             style: TextStyle(fontSize: 13, color: OrigenColors.textMuted)),
         const SizedBox(height: 6),
@@ -371,6 +420,172 @@ class _Advanced extends StatelessWidget {
         ),
         const SizedBox(height: 8),
       ],
+    );
+  }
+}
+
+
+/// Selector de dron y resolución de foto.
+class _DroneCard extends StatelessWidget {
+  const _DroneCard({required this.l});
+  final ValueListenables l;
+
+  void _selectDrone(String id) {
+    final drone = DroneModels.byId(id);
+    l.droneId = drone.id;
+    final presets = PresetManager.getPresets();
+    final match = presets.where((p) => drone.presets.contains(p.name));
+    if (match.isNotEmpty) {
+      // Perfil recomendado (12 MP)
+      applyCameraPreset(
+          l, presets.firstWhere((p) => p.name == drone.presets.first));
+    }
+    saveFlightSettings(l);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final drone = DroneModels.byId(l.droneId);
+    final presets = PresetManager.getPresets()
+        .where((p) => drone.presets.contains(p.name))
+        .toList();
+    final selectedPreset = l.selectedCameraPreset?.name;
+    final icon = switch (drone.support) {
+      DroneSupport.verified => Icons.verified_outlined,
+      DroneSupport.compatible => Icons.info_outline,
+      DroneSupport.litchiOnly => Icons.warning_amber_rounded,
+    };
+    final color = switch (drone.support) {
+      DroneSupport.verified => OrigenColors.ok,
+      DroneSupport.compatible => OrigenColors.textMuted,
+      DroneSupport.litchiOnly => OrigenColors.check,
+    };
+
+    return PanelSection(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          DropdownButtonFormField<String>(
+            key: ValueKey("drone-${drone.id}"),
+            initialValue: drone.id,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: "Dron"),
+            items: [
+              for (final d in DroneModels.all)
+                DropdownMenuItem(value: d.id, child: Text(d.name)),
+            ],
+            onChanged: (id) {
+              if (id != null) _selectDrone(id);
+            },
+          ),
+          if (presets.length > 1) ...[
+            const SizedBox(height: 10),
+            SegmentedChoice<String>(
+              options: [
+                for (final p in presets)
+                  (
+                    p.name,
+                    p == presets.first
+                        ? "${DroneModels.presetLabel(p.name)} (recom.)"
+                        : DroneModels.presetLabel(p.name)
+                  ),
+              ],
+              selected: presets.any((p) => p.name == selectedPreset)
+                  ? selectedPreset!
+                  : presets.first.name,
+              onSelected: (name) {
+                applyCameraPreset(
+                    l, presets.firstWhere((p) => p.name == name));
+              },
+            ),
+          ],
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(drone.supportText,
+                    style: TextStyle(fontSize: 12, color: color)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Velocidad máxima sugerida bajo el control de velocidad.
+class _SpeedHint extends StatelessWidget {
+  const _SpeedHint({required this.l, required this.s});
+  final ValueListenables l;
+  final MissionSummary s;
+
+  @override
+  Widget build(BuildContext context) {
+    if (s.maxSpeed <= 0) return const SizedBox.shrink();
+    final tooFast = l.speed > s.maxSpeed + 0.01;
+    final reason = l.turnMode == TurnMode.curved
+        ? "foto cada ≥ ${fmtNum(s.minIntervalSec, 0)} s y nitidez a 1/1000 s"
+        : "nitidez a 1/1000 s";
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Icon(tooFast ? Icons.warning_amber_rounded : Icons.speed,
+              size: 16,
+              color: tooFast ? OrigenColors.check : OrigenColors.textMuted),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+                "Máx. sugerida ${fmtNum(s.maxSpeed)} m/s ($reason)",
+                style: TextStyle(
+                    fontSize: 12,
+                    color:
+                        tooFast ? OrigenColors.check : OrigenColors.textMuted)),
+          ),
+          if (tooFast)
+            TextButton(
+              onPressed: () {
+                l.speed = s.maxSpeed.clamp(2.0, 12.0);
+                saveFlightSettings(l);
+              },
+              child: Text("Usar ${fmtNum(s.maxSpeed.clamp(2.0, 12.0))}"),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Alinea las líneas de vuelo con los lados del área (del más largo al más
+/// corto): menos giros y más batería útil.
+class _AlignButton extends StatelessWidget {
+  const _AlignButton({required this.l});
+  final ValueListenables l;
+
+  @override
+  Widget build(BuildContext context) {
+    final rots = PolygonTools.edgeRotations(l.polygon);
+    if (rots.isEmpty) return const SizedBox.shrink();
+    final current = l.rotation == -90 ? 90 : l.rotation;
+    final idx = rots.indexOf(current);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: () {
+          l.rotation = idx < 0 ? rots.first : rots[(idx + 1) % rots.length];
+          saveFlightSettings(l);
+        },
+        icon: const Icon(Icons.straighten, size: 18),
+        label: Text(idx < 0
+            ? "Alinear con el lado más largo"
+            : rots.length == 1
+                ? "Alineado con el lado más largo"
+                : "Alineado con el lado ${idx + 1} de ${rots.length} · siguiente"),
+      ),
     );
   }
 }

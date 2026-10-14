@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:universal_html/html.dart' as html;
 import 'package:dji_waypoint_engine/engine.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:ymapper/core/drone_models.dart';
 import 'package:ymapper/core/mission_tools.dart';
 import 'package:ymapper/main.dart';
 import 'package:ymapper/presets/preset_manager.dart';
@@ -228,10 +229,13 @@ class MissionDoc {
         "lineExtension": l.lineExtension,
         "batteryMinutes": l.batteryMinutes,
         "turnMode": l.turnMode.name,
+        "areaMargin": l.areaMargin,
+        "startAtHome": l.startAtHome,
         "finishAction": l.onFinished.name,
         "rcLostAction": l.rcLostAction.name,
       },
       "camera": {
+        "drone": l.droneId,
         "preset": l.selectedCameraPreset?.name,
         "sensorWidth": l.sensorWidth,
         "sensorHeight": l.sensorHeight,
@@ -276,6 +280,8 @@ class MissionDoc {
     l.lineExtension = _i(f["lineExtension"], l.lineExtension);
     l.batteryMinutes = _i(f["batteryMinutes"], l.batteryMinutes);
     l.turnMode = _enum(TurnMode.values, f["turnMode"], TurnMode.curved);
+    l.areaMargin = _i(f["areaMargin"], 0);
+    l.startAtHome = f["startAtHome"] == true;
     l.onFinished =
         _enum(FinishAction.values, f["finishAction"], FinishAction.goHome);
     l.rcLostAction =
@@ -289,6 +295,10 @@ class MissionDoc {
       l.selectedCameraPreset = preset;
       prefs.setString("latestPreset", preset.name);
     }
+    final drone = c["drone"] is String
+        ? DroneModels.byId(c["drone"])
+        : DroneModels.forPreset(preset?.name);
+    if (drone != null) l.droneId = drone.id;
     l.sensorWidth = _d(c["sensorWidth"], l.sensorWidth);
     l.sensorHeight = _d(c["sensorHeight"], l.sensorHeight);
     l.focalLength = _d(c["focalLength"], l.focalLength);

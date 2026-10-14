@@ -283,6 +283,26 @@ class MissionStats {
     return altitude * sensorWidth * 100 / (focalLength * imageWidth);
   }
 
+  /// Tiempo mínimo entre fotos en vuelo continuo (estimado): con 12 MP las
+  /// cámaras DJI disparan cada ~2 s; con 48/50 MP necesitan más tiempo.
+  static double minPhotoIntervalSec(int imageWidth) =>
+      imageWidth > 6000 ? 5.0 : 2.0;
+
+  /// Velocidad máxima sugerida (m/s, múltiplo de 0,5) para que la cámara
+  /// alcance a disparar y el barrido a 1/1000 s no pase de medio píxel.
+  static double suggestedMaxSpeed({
+    required double photoSpacing,
+    required double gsdCm,
+    required double minIntervalSec,
+  }) {
+    if (photoSpacing <= 0 || gsdCm <= 0) return 0;
+    final byInterval = photoSpacing / minIntervalSec;
+    // barrido = v · 1/1000 s ≤ GSD/2  →  v ≤ 500 · GSD[m]
+    final byBlur = 500 * gsdCm / 100;
+    final v = min(min(byInterval, byBlur), 15.0);
+    return max(1.0, (v * 2).floorToDouble() / 2);
+  }
+
   /// Tamaño mínimo recomendado de la diana: 20 píxeles en la foto.
   static double targetSizeCm(double gsdCm) => gsdCm * 20;
 
@@ -344,6 +364,42 @@ class MissionStats {
 
 /// Utilidades para el polígono del área de vuelo.
 class PolygonTools {
+  /// Valores de "Dirección de las líneas" (−90…90°) que dejan las líneas
+  /// paralelas a cada lado del polígono, del lado más largo al más corto y
+  /// sin repetir direcciones.
+  static List<int> edgeRotations(List<LatLng> polygon) {
+    if (polygon.length < 2) return [];
+    final lat0 = polygon.first.latitude * pi / 180;
+    final edges = <(double, int)>[];
+    for (int i = 0; i < polygon.length; i++) {
+      final a = polygon[i], b = polygon[(i + 1) % polygon.length];
+      final dx = (b.longitude - a.longitude) * cos(lat0) * 111320;
+      final dy = (b.latitude - a.latitude) * 110540;
+      final len = sqrt(dx * dx + dy * dy);
+      if (len < 1) continue;
+      // El motor gira el polígono "rotación" grados y vuela en el eje x:
+      // las líneas quedan con rumbo −rotación (matemático, desde el este).
+      var r = -(atan2(dy, dx) * 180 / pi);
+      while (r > 90) {
+        r -= 180;
+      }
+      while (r <= -90) {
+        r += 180;
+      }
+      edges.add((len, r.round()));
+    }
+    edges.sort((a, b) => b.$1.compareTo(a.$1));
+    final result = <int>[];
+    for (final e in edges) {
+      // −90 y 90 son la misma dirección
+      final v = e.$2 == -90 ? 90 : e.$2;
+      if (result.every((r) => (r - v).abs() > 2 && (r - v).abs() < 178)) {
+        result.add(v);
+      }
+    }
+    return result;
+  }
+
   static double perimeterMeters(List<LatLng> polygon) {
     if (polygon.length < 2) return 0;
     const d = Distance();

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:ymapper/core/drone_mapper_format.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:ymapper/core/djifly_kmz.dart';
+import 'package:ymapper/core/drone_models.dart';
 import 'package:ymapper/core/mission_store.dart';
 import 'package:ymapper/core/file_saver.dart';
 import 'package:ymapper/core/share/share_file.dart';
@@ -45,6 +46,9 @@ class ExportBarState extends State<ExportBar> {
         speed: l.speed,
         delaySec: l.delayAtWaypoint,
         batteryMinutes: l.batteryMinutes,
+        maxWaypoints: l.startAtHome && l.homePoint != null
+            ? MissionStats.maxWaypointsPerMission - 1
+            : MissionStats.maxWaypointsPerMission,
       );
 
   /// Genera el KMZ de DJI Fly para los puntos [start]..[end] (inclusivos),
@@ -54,8 +58,15 @@ class ExportBarState extends State<ExportBar> {
     final flags = [
       for (int i = start; i <= end; i++) _isPhoto(listenables, i),
     ];
+    final points = listenables.photoLocations.sublist(start, end + 1);
+    // Primer punto (sin foto) sobre el Home
+    final home = listenables.homePoint;
+    if (listenables.startAtHome && home != null) {
+      points.insert(0, home);
+      flags.insert(0, false);
+    }
     return DjiFlyKmz.build(
-      points: listenables.photoLocations.sublist(start, end + 1),
+      points: points,
       photoFlags: flags,
       altitude: listenables.altitude,
       speed: listenables.speed,
@@ -69,6 +80,17 @@ class ExportBarState extends State<ExportBar> {
 
   Uint8List _buildLitchiCsv(ValueListenables listenables, int start, int end) {
     var waypoints = <litchi.Waypoint>[];
+    final home = listenables.homePoint;
+    if (listenables.startAtHome && home != null) {
+      waypoints.add(litchi.Waypoint(
+          latitude: home.latitude,
+          longitude: home.longitude,
+          altitude: listenables.altitude,
+          speed: listenables.speed.toInt(),
+          gimbalPitch: listenables.cameraAngle,
+          gimbalMode: litchi.GimbalMode.interpolate,
+          actions: []));
+    }
     for (int i = start; i <= end; i++) {
       final location = listenables.photoLocations[i];
       final photo = _isPhoto(listenables, i);
@@ -422,6 +444,18 @@ class ExportBarState extends State<ExportBar> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (!DroneModels.byId(listenables.droneId).hasDjiFlyWaypoints)
+              Container(
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 10),
+                decoration: BoxDecoration(
+                    color: const Color(0xFF3A2A18),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: OrigenColors.check)),
+                child: Text(
+                    "${DroneModels.byId(listenables.droneId).name} no tiene waypoints en DJI Fly. Usa \"Litchi (CSV)\" más abajo.",
+                    style: const TextStyle(fontSize: 13)),
+              ),
             Container(
               padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
               margin: const EdgeInsets.only(bottom: 10),

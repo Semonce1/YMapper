@@ -251,6 +251,31 @@ class ValueListenables extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Dron seleccionado (ver DroneModels)
+  final _droneId = ValueNotifier<String>("air3");
+  String get droneId => _droneId.value;
+  set droneId(String value) {
+    _droneId.value = value;
+    notifyListeners();
+  }
+
+  /// Margen (m) para tomar fotos por fuera del borde del área.
+  /// 0 = todos los centros de foto quedan dentro del área.
+  final _areaMargin = ValueNotifier<int>(0);
+  int get areaMargin => _areaMargin.value;
+  set areaMargin(int value) {
+    _areaMargin.value = value;
+    notifyListeners();
+  }
+
+  /// Agregar un primer punto (sin foto) sobre el Home en cada misión
+  final _startAtHome = ValueNotifier<bool>(false);
+  bool get startAtHome => _startAtHome.value;
+  set startAtHome(bool value) {
+    _startAtHome.value = value;
+    notifyListeners();
+  }
+
   final _selectedCameraPreset = ValueNotifier<CameraPreset?>(null);
   CameraPreset? get selectedCameraPreset => _selectedCameraPreset.value;
   set selectedCameraPreset(CameraPreset? value) {

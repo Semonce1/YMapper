@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:ymapper/components/app_bar.dart';
 import 'package:ymapper/core/drone_mapping_engine.dart';
+import 'package:ymapper/core/drone_models.dart';
 import 'package:ymapper/core/mission_tools.dart';
 import 'package:ymapper/github/update_checker.dart';
 import 'package:ymapper/layouts/export.dart';
@@ -60,6 +61,7 @@ class _HomeLayoutState extends State<HomeLayout> {
         l.fillGrid,
         l.createCameraPoints,
         l.lineExtension,
+        l.areaMargin,
         l.showPoints,
         l.turnMode,
       ].join("|");
@@ -121,21 +123,30 @@ class _HomeLayoutState extends State<HomeLayout> {
       listenables.lineExtension = aircraftSettings.lineExtension;
       listenables.batteryMinutes = aircraftSettings.batteryMinutes;
       listenables.turnMode = aircraftSettings.turnMode;
+      listenables.droneId = aircraftSettings.droneId;
+      listenables.areaMargin = aircraftSettings.areaMargin;
+      listenables.startAtHome = aircraftSettings.startAtHome;
     });
 
     var cameraPresets = PresetManager.getPresets();
 
     // Load the latest camera preset
+    // Perfil por defecto: el recomendado del dron guardado (Air 3 12 MP)
+    final droneDefault =
+        DroneModels.byId(aircraftSettings.droneId).presets.firstOrNull;
+    final fallbackPreset = cameraPresets.firstWhere(
+        (p) => p.name == droneDefault,
+        orElse: () => cameraPresets[0]);
     var latestPresetName = prefs.getString("latestPreset");
     if (latestPresetName == null) {
-      latestPresetName = cameraPresets[0].name;
+      latestPresetName = fallbackPreset.name;
       prefs.setString("latestPreset", latestPresetName);
     }
 
     // Select the latest camera preset
     listenables.selectedCameraPreset = cameraPresets.firstWhere(
         (element) => element.name == latestPresetName,
-        orElse: () => cameraPresets[0]);
+        orElse: () => fallbackPreset);
 
     // Load camera settings into the provider
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -278,6 +289,7 @@ class _HomeLayoutState extends State<HomeLayout> {
       angle: listenables.rotation.toDouble(),
       groundOffset: listenables.groundOffset.toDouble(),
       lineExtension: listenables.lineExtension.toDouble(),
+      areaMargin: listenables.areaMargin.toDouble(),
     );
 
     var waypoints = droneMapping.generateWaypoints(
