@@ -204,6 +204,15 @@ class ExportBarState extends State<ExportBar> {
   /// Archivos"). Debe llamarse directamente desde un toque.
   Future<void> _sendToDjiFly(ValueListenables l, MissionSegment seg,
       int index, int total) async {
+    // Sin misión fija configurada el archivo saldría con otro nombre y iOS no
+    // ofrecería "Reemplazar": se pide configurarla primero.
+    if (DjiFlySlot.current == null) {
+      await _configureSlot();
+      if (DjiFlySlot.current != null) {
+        _snack("Listo. Toca de nuevo \"Enviar a DJI Fly\".");
+      }
+      return;
+    }
     final bytes = _buildDjiKmz(l, seg.start, seg.end);
     final name = _kmzName(l, index, total);
     final result = await shareFile(bytes, name,
@@ -528,6 +537,18 @@ class ExportBarState extends State<ExportBar> {
                             "Enviar misión ${i + 1} de $missions · ${summary.segments[i].photos} fotos")),
                   ),
                 ),
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 2),
+              child: DjiFlySlot.current == null
+                  ? const Text(
+                      "Primero configura la misión fija de DJI Fly en este dispositivo (se abre al tocar el botón).",
+                      style: TextStyle(
+                          fontSize: 12, color: OrigenColors.accent))
+                  : Text(
+                      "Se guardará como ${DjiFlySlot.current}.kmz · elige \"Guardar en Archivos\" y luego Reemplazar.",
+                      style: const TextStyle(
+                          fontSize: 12, color: OrigenColors.textMuted)),
+            ),
             const SizedBox(height: 6),
             Row(
               children: [
