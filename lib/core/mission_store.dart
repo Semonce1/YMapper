@@ -320,3 +320,29 @@ class MissionDoc {
     ];
   }
 }
+
+/// Misión fija de DJI Fly que se reemplaza en cada vuelo. Guardamos el
+/// nombre de su carpeta (un identificador como F93B1A22-88E7-...) para que
+/// el KMZ exportado salga ya con ese nombre y solo haya que reemplazarlo.
+class DjiFlySlot {
+  static const _prefsKey = "djiFlySlot";
+  static final _pattern = RegExp(
+      r'^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$');
+
+  static String? get current => prefs.getString(_prefsKey);
+
+  /// Extrae el identificador del nombre de archivo o carpeta.
+  static String? parse(String name) {
+    var n = name.trim();
+    final slash = n.lastIndexOf('/');
+    if (slash >= 0) n = n.substring(slash + 1);
+    if (n.toLowerCase().endsWith('.kmz')) n = n.substring(0, n.length - 4);
+    return _pattern.hasMatch(n) ? n.toUpperCase() : null;
+  }
+
+  static Future<void> save(String id) => prefs.setString(_prefsKey, id);
+  static Future<void> clear() => prefs.remove(_prefsKey);
+
+  /// Versión corta para mostrar: los primeros 8 caracteres.
+  static String short(String id) => id.substring(0, 8);
+}

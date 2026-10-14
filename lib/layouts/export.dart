@@ -1,7 +1,9 @@
 import 'dart:convert';
 
 import 'package:ymapper/core/drone_mapper_format.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:ymapper/core/djifly_kmz.dart';
+import 'package:ymapper/core/mission_store.dart';
 import 'package:ymapper/core/file_saver.dart';
 import 'package:ymapper/core/share/share_file.dart';
 import 'package:ymapper/core/mission_tools.dart';
@@ -106,9 +108,11 @@ class ExportBarState extends State<ExportBar> {
       final bytes = dji
           ? _buildDjiKmz(listenables, seg.start, seg.end, turnMode: turnMode)
           : _buildLitchiCsv(listenables, seg.start, seg.end);
-      final name = segments.length == 1
-          ? baseName
-          : "${baseName}_m${(index + 1).toString().padLeft(2, '0')}";
+      final slot = dji ? DjiFlySlot.current : null;
+      final name = slot ??
+          (segments.length == 1
+              ? baseName
+              : "${baseName}_m${(index + 1).toString().padLeft(2, '0')}");
       return FileSaver.save(
           bytes: bytes,
           fileName: name,
@@ -182,6 +186,10 @@ class ExportBarState extends State<ExportBar> {
   }
 
   String _kmzName(ValueListenables l, int index, int total) {
+    // Con la misión fija de DJI Fly configurada, el archivo ya sale con el
+    // nombre exacto que hay que reemplazar.
+    final slot = DjiFlySlot.current;
+    if (slot != null) return "$slot.kmz";
     final base = (l.currentMissionName ?? "origenlabs_mision")
         .toLowerCase()
         .replaceAll(RegExp(r'[^a-z0-9áéíóúñ]+'), '_')
@@ -192,8 +200,8 @@ class ExportBarState extends State<ExportBar> {
         : "${safe}_m${(index + 1).toString().padLeft(2, '0')}.kmz";
   }
 
-  /// Abre el menú de compartir del iPhone con el KMZ para enviarlo al Atajo
-  /// "Enviar a DJI Fly". Debe llamarse directamente desde un toque.
+  /// Abre el menú de compartir del iPhone con el KMZ ("Guardar en
+  /// Archivos"). Debe llamarse directamente desde un toque.
   Future<void> _sendToDjiFly(ValueListenables l, MissionSegment seg,
       int index, int total) async {
     final bytes = _buildDjiKmz(l, seg.start, seg.end);
@@ -202,7 +210,9 @@ class ExportBarState extends State<ExportBar> {
         mimeType: "application/vnd.google-earth.kmz");
     switch (result) {
       case ShareResult.shared:
-        _snack("Misión enviada. Abre DJI Fly y cárgala.");
+        _snack(DjiFlySlot.current == null
+            ? "Listo. Guárdalo en la carpeta de la misión y reemplaza el archivo."
+            : "Listo. Abre DJI Fly y carga la misión fija.");
       case ShareResult.cancelled:
         break;
       case ShareResult.unsupported:
@@ -216,69 +226,99 @@ class ExportBarState extends State<ExportBar> {
     }
   }
 
-  void _shortcutGuide() {
-    Widget item(String n, String text) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 5),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                  width: 24,
-                  child: Text("$n.",
-                      style: const TextStyle(
-                          color: OrigenColors.accent,
-                          fontWeight: FontWeight.w600))),
-              Expanded(
-                  child: Text(text,
-                      style: const TextStyle(fontSize: 13, height: 1.4))),
-            ],
-          ),
-        );
-    showDialog(
+  Future<void> _configureSlot() async {
+    final controller = TextEditingController(text: DjiFlySlot.current ?? "");
+    String? error;
+    await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Crear el Atajo \"Enviar a DJI Fly\""),
-        content: SizedBox(
-          width: 460,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                    "Se hace una sola vez en la app Atajos del iPhone (unos 5 minutos).",
-                    style: TextStyle(
-                        fontSize: 13, color: OrigenColors.textMuted)),
-                const SizedBox(height: 8),
-                item("1",
-                    "Abre Atajos, toca + y nombra el atajo \"Enviar a DJI Fly\"."),
-                item("2",
-                    "Toca el ícono de información (i) y activa \"Mostrar en hoja para compartir\". En los tipos de entrada deja solo \"Archivos\"."),
-                item("3",
-                    "Agrega \"Obtener contenido de la carpeta\" y elige: En mi iPhone › DJI Fly › wayline_mission."),
-                item("4",
-                    "Agrega \"Filtrar archivos\": condición Nombre · no es · mission_db. Ordenar por Fecha de modificación, Más reciente primero. Activa Limitar: 1."),
-                item("5",
-                    "Agrega \"Obtener nombre\" del resultado anterior (es el nombre de la carpeta de la misión vacía)."),
-                item("6",
-                    "Agrega \"Establecer nombre\" de la Entrada del atajo como: [Nombre].kmz (usa la variable Nombre)."),
-                item("7",
-                    "Agrega \"Guardar archivo\" con el archivo renombrado. Desactiva \"Preguntar dónde guardar\", elige la carpeta wayline_mission, en Subruta escribe [Nombre]/[Nombre].kmz y activa \"Sobrescribir si el archivo existe\"."),
-                item("8", "Agrega \"Abrir app\" y elige DJI Fly."),
-                const SizedBox(height: 8),
-                const Text(
-                    "Uso: crea la misión vacía en DJI Fly y ciérrala; en esta app toca \"Enviar a DJI Fly\" y elige el atajo. Antes de volar, confirma en DJI Fly que la ruta es la correcta.",
-                    style: TextStyle(
-                        fontSize: 12, color: OrigenColors.textMuted)),
-              ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialog) {
+          Future<void> pick() async {
+            final picked = await FilePicker.pickFiles(
+                type: FileType.any, dialogTitle: "Misión fija de DJI Fly");
+            if (picked == null || picked.files.isEmpty) return;
+            final id = DjiFlySlot.parse(picked.files.first.name);
+            if (id == null) {
+              setDialog(() => error =
+                  "Ese archivo no es de una misión de DJI Fly. Elige el .kmz que está dentro de la carpeta de la misión.");
+              return;
+            }
+            await DjiFlySlot.save(id);
+            if (context.mounted) Navigator.pop(context);
+            if (mounted) setState(() {});
+            _snack("Misión fija configurada (${DjiFlySlot.short(id)}…)");
+          }
+
+          Future<void> saveTyped() async {
+            final id = DjiFlySlot.parse(controller.text);
+            if (id == null) {
+              setDialog(() => error =
+                  "El nombre debe verse así: F93B1A22-88E7-497B-A54E-B009C992A632");
+              return;
+            }
+            await DjiFlySlot.save(id);
+            if (context.mounted) Navigator.pop(context);
+            if (mounted) setState(() {});
+            _snack("Misión fija configurada (${DjiFlySlot.short(id)}…)");
+          }
+
+          return AlertDialog(
+            title: const Text("Configurar DJI Fly (una sola vez)"),
+            content: SizedBox(
+              width: 440,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _step("1", "Crea la misión fija en DJI Fly",
+                        "Waypoints › 1 punto cualquiera › guárdala con un nombre como \"OrigenLabs\" y cierra DJI Fly."),
+                    _step("2", "Selecciona su archivo aquí",
+                        "Toca el botón y busca En mi iPhone › DJI Fly › wayline_mission › la carpeta más reciente › el archivo .kmz."),
+                    const SizedBox(height: 8),
+                    FilledButton.icon(
+                        onPressed: pick,
+                        icon: const Icon(Icons.folder_open),
+                        label: const Text("Seleccionar el archivo .kmz")),
+                    const SizedBox(height: 14),
+                    const Text("O pega el nombre de la carpeta:",
+                        style: TextStyle(
+                            fontSize: 12, color: OrigenColors.textMuted)),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: controller,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                      decoration: const InputDecoration(
+                          hintText: "F93B1A22-88E7-497B-A54E-B009C992A632",
+                          isDense: true),
+                      onSubmitted: (_) => saveTyped(),
+                    ),
+                    if (error != null) ...[
+                      const SizedBox(height: 8),
+                      Text(error!,
+                          style: const TextStyle(
+                              color: OrigenColors.dangerText, fontSize: 12)),
+                    ],
+                  ],
+                ),
+              ),
             ),
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Entendido")),
-        ],
+            actions: [
+              if (DjiFlySlot.current != null)
+                TextButton(
+                    onPressed: () async {
+                      await DjiFlySlot.clear();
+                      if (context.mounted) Navigator.pop(context);
+                      if (mounted) setState(() {});
+                    },
+                    child: const Text("Quitar")),
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cancelar")),
+              FilledButton(onPressed: saveTyped, child: const Text("Guardar")),
+            ],
+          );
+        },
       ),
     );
   }
@@ -502,9 +542,9 @@ class ExportBarState extends State<ExportBar> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
-                      onPressed: _shortcutGuide,
-                      icon: const Icon(Icons.bolt, size: 18),
-                      label: const Text("Crear el Atajo")),
+                      onPressed: _configureSlot,
+                      icon: const Icon(Icons.settings_outlined, size: 18),
+                      label: const Text("Configurar DJI Fly")),
                 ),
               ],
             ),
@@ -552,14 +592,20 @@ class ExportBarState extends State<ExportBar> {
               title: "En tu iPhone",
               child: Column(
                 children: [
-                  _step("1", "Crea una misión vacía en DJI Fly",
-                      "Waypoints, 1 o 2 puntos cualesquiera. Guárdala y cierra la app por completo."),
-                  _step("2", "Toca \"Enviar a DJI Fly\"",
-                      "Elige el Atajo \"Enviar a DJI Fly\" en el menú de compartir. Reemplaza el archivo y abre DJI Fly por ti."),
-                  _step("3", "Sin Atajo: reemplazo manual",
-                      "Descarga el KMZ. En Archivos › DJI Fly › wayline_mission, entra a la carpeta más reciente, renombra el KMZ con el nombre de esa carpeta y reemplázalo."),
-                  _step("4", "Abre la misión y vuela",
-                      "Revisa la ruta en el mapa de DJI Fly antes de despegar. No la edites ni la guardes allí."),
+                  if (DjiFlySlot.current == null)
+                    _step("0", "Una sola vez: configura DJI Fly",
+                        "Toca \"Configurar DJI Fly\" para dejar una misión fija que se reemplaza en cada vuelo.")
+                  else
+                    _step("✓", "Misión fija: ${DjiFlySlot.short(DjiFlySlot.current!)}…",
+                        "El archivo ya sale con el nombre de esa misión."),
+                  _step("1", "Toca \"Enviar a DJI Fly\"",
+                      "En el menú elige \"Guardar en Archivos\"."),
+                  _step("2", "Guárdalo en la carpeta de la misión",
+                      DjiFlySlot.current == null
+                          ? "En mi iPhone › DJI Fly › wayline_mission › carpeta de la misión. Renombra el archivo igual que la carpeta y toca Reemplazar."
+                          : "En mi iPhone › DJI Fly › wayline_mission › carpeta ${DjiFlySlot.short(DjiFlySlot.current!)}… › Guardar › Reemplazar."),
+                  _step("3", "Abre DJI Fly y vuela",
+                      "Carga la misión fija y revisa la ruta antes de despegar. No la edites ni la guardes dentro de DJI Fly."),
                 ],
               ),
             ),
